@@ -18,7 +18,7 @@ APP_DIR = os.path.dirname(os.path.abspath(__file__))
 CONFIG_PATH = os.path.join(APP_DIR, "config.json")
 INVITE_IMAGE_PATH = os.path.join(APP_DIR, "invite_poster.png")
 
-APP_VERSION = "1.0.0"
+APP_VERSION = "0.0.1"
 
 DEFAULT_CONFIG = {
     "api_key": "",
