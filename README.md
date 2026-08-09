@@ -13,7 +13,6 @@
 - ⚙️ **灵活配置**:Base URL 下拉(按量付费 / Token Plan)、模型下拉、系统提示词自定义
 - 📶 **测试连通**:一键验证 Key + 网络,显示「连通成功,响应X.XX秒」
 - 🎁 **邀请福利**:内置"免费领取10体验金"入口,悬停可查看宣传图
-- 🔄 **自动检查更新**:启动时静默检测 GitHub 新版本,发现即提示跳转下载
 
 ## 快速开始
 
@@ -74,16 +73,6 @@ screenshot.py     屏幕选区截图
 requirements.txt  依赖清单
 config.example.json  配置模板
 ```
-
-## 更新机制
-
-软件每次启动会**静默检查 GitHub Releases 是否有新版本**(需在 `config.json` 中配置):
-```json
-"update_repo": "你的用户名/quiz-ai-helper"
-```
-发现新版本后自动弹窗提示,点击即可跳转下载页;也可手动点工具栏「检查更新」。
-
-> 发布新版本流程:`git tag v1.0.1 && git push --tags`,并在 GitHub 仓库 Release 页创建对应版本(可附上打包好的 zip)。版本号规则:`v主.次.修`。
 
 ## 邀请福利 🎁
 
