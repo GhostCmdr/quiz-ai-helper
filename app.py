@@ -366,7 +366,12 @@ class App:
         toolbar = ttk.Frame(self.root, padding=(8, 8))
         self.toolbar = toolbar
         toolbar.pack(fill="x")
-        ttk.Button(toolbar, text="截图识别 (F2)", takefocus=0, command=self.capture_ocr).pack(side="left")
+        capture_frame = ttk.Frame(toolbar)
+        ttk.Button(capture_frame, text="截图识别 (F2)", takefocus=0, command=self.capture_ocr).pack()
+        self.region_var = tk.BooleanVar(value=self.config.get("auto_region", False))
+        ttk.Checkbutton(capture_frame, text="区域自动识别", variable=self.region_var,
+                        command=self._on_region_var_toggle).pack(pady=(3, 0))
+        capture_frame.pack(side="left")
         ttk.Button(toolbar, text="打开图片", takefocus=0, command=self.open_file_ocr).pack(side="left", padx=(6, 0))
         ttk.Button(toolbar, text="识别剪贴板", takefocus=0, command=self.clipboard_ocr).pack(side="left", padx=(6, 0))
         ttk.Button(toolbar, text="清空", takefocus=0, command=self.clear_all).pack(side="left", padx=(6, 0))
@@ -374,9 +379,6 @@ class App:
         ttk.Button(send_frame, text="发送给 MiMo", takefocus=0, command=self.send_to_mimo).pack()
         self.auto_var = tk.BooleanVar(value=self.config.get("auto_send", True))
         ttk.Checkbutton(send_frame, text="识别后自动发送", variable=self.auto_var).pack(pady=(3, 0))
-        self.region_var = tk.BooleanVar(value=self.config.get("auto_region", False))
-        ttk.Checkbutton(send_frame, text="区域自动识别", variable=self.region_var,
-                        command=self._on_region_var_toggle).pack(pady=(3, 0))
         send_frame.pack(side="left", padx=(6, 0))
         ttk.Button(toolbar, text="设置", takefocus=0, command=self.open_settings).pack(side="left", padx=(6, 0))
         spacer = ttk.Frame(toolbar)
@@ -624,8 +626,7 @@ class App:
     def _on_region_var_toggle(self):
         if self.region_var.get():
             if self.region_bbox is None:
-                self._set_status("请先框选识别区域")
-                self.capture_ocr()
+                self._set_status("区域自动识别已开启,请按 F2 框选识别区域")
             else:
                 self._start_region_monitor()
                 self._set_status("区域自动识别已开启")
