@@ -30,6 +30,8 @@ DEFAULT_CONFIG = {
     "max_tokens": 2048,
     "system_prompt": "直接回答用户的问题,不要分析过程,不要输出思考过程,不要给出答案解析,直接给出答案",
     "auto_send": True,
+    "auto_region": False,
+    "region_stable": 0.6,
     "geometry": "",
     "update_repo": "",
 }
@@ -101,6 +103,7 @@ class SettingsDialog(tk.Toplevel):
             ("模型", "model", 30),
             ("Temperature", "temperature", 8),
             ("Max Tokens", "max_tokens", 8),
+            ("触发稳定时间(秒)", "region_stable", 8),
         ]
         self.entries = {}
         for row, (label, key, width) in enumerate(rows):
@@ -293,14 +296,18 @@ class SettingsDialog(tk.Toplevel):
         try:
             temperature = float(self.entries["temperature"].get())
             max_tokens = int(self.entries["max_tokens"].get())
+            region_stable = float(self.entries["region_stable"].get())
+            if region_stable <= 0:
+                raise ValueError
         except ValueError:
-            messagebox.showerror("设置", "Temperature 必须是数字,Max Tokens 必须是整数")
+            messagebox.showerror("设置", "Temperature 必须是数字,Max Tokens 必须是整数,触发稳定时间必须是正数")
             return
         self.config["api_key"] = self.entries["api_key"].get().strip()
         self.config["base_url"] = self.entries["base_url"].get().strip()
         self.config["model"] = self.entries["model"].get().strip()
         self.config["temperature"] = temperature
         self.config["max_tokens"] = max_tokens
+        self.config["region_stable"] = region_stable
         self.config["system_prompt"] = self.prompt_text.get("1.0", "end-1c")
         save_config(self.config)
         self.on_save()
@@ -328,6 +335,10 @@ class App:
         self.stats = None
         self._stop_event = threading.Event()
         self._req_id = 0
+        self.region_bbox = None
+        self._monitor_thread = None
+        self._monitor_stop = threading.Event()
+        self._pending_region_change = False
         self.history_records = history_store.load_history(HISTORY_PATH)
         self._build_ui()
         self._refresh_history_list()
@@ -363,6 +374,9 @@ class App:
         ttk.Button(send_frame, text="发送给 MiMo", takefocus=0, command=self.send_to_mimo).pack()
         self.auto_var = tk.BooleanVar(value=self.config.get("auto_send", True))
         ttk.Checkbutton(send_frame, text="识别后自动发送", variable=self.auto_var).pack(pady=(3, 0))
+        self.region_var = tk.BooleanVar(value=self.config.get("auto_region", False))
+        ttk.Checkbutton(send_frame, text="区域自动识别", variable=self.region_var,
+                        command=self._on_region_var_toggle).pack(pady=(3, 0))
         send_frame.pack(side="left", padx=(6, 0))
         ttk.Button(toolbar, text="设置", takefocus=0, command=self.open_settings).pack(side="left", padx=(6, 0))
         spacer = ttk.Frame(toolbar)
@@ -470,6 +484,14 @@ class App:
             self.ocr_text.insert("1.0", args[0])
             if self.auto_var.get() and args[0].strip():
                 self.send_to_mimo()
+        elif event == "region_changed":
+            if not self.region_var.get():
+                return
+            if self.streaming:
+                self._pending_region_change = True
+                self._set_status("新题出现,等待当前生成完成")
+            else:
+                self._region_changed_proc()
         elif event == "ocr_error":
             self._set_status("OCR 失败")
             messagebox.showerror("OCR 识别", args[0])
@@ -501,6 +523,9 @@ class App:
                 if updated is not None:
                     self.history_records = updated
                     self._refresh_history_list()
+            if self._pending_region_change:
+                self._pending_region_change = False
+                self._region_changed_proc()
         elif event == "stream_stopped":
             if args[0] != self._req_id:
                 return
@@ -592,6 +617,72 @@ class App:
         except Exception as error:
             messagebox.showerror("截图", str(error))
             self._set_status("截图失败")
+        self.region_bbox = bbox
+        if self.region_var.get():
+            self._start_region_monitor()
+
+    def _on_region_var_toggle(self):
+        if self.region_var.get():
+            if self.region_bbox is None:
+                self._set_status("请先框选识别区域")
+                self.capture_ocr()
+            else:
+                self._start_region_monitor()
+                self._set_status("区域自动识别已开启")
+        else:
+            self._stop_region_monitor()
+            self._set_status("区域自动识别已关闭")
+
+    def _stop_region_monitor(self):
+        self._monitor_stop.set()
+        if self._monitor_thread is not None:
+            self._monitor_thread = None
+
+    def _region_changed_proc(self):
+        try:
+            image = screenshot.grab_region(*self.region_bbox)
+        except Exception as error:
+            self._set_status("区域截图失败")
+            return
+        self._start_ocr(image)
+
+    def _start_region_monitor(self):
+        self._monitor_stop.set()
+        self._monitor_stop = threading.Event()
+        self._monitor_thread = threading.Thread(
+            target=self._region_monitor, args=(self.region_bbox, self._monitor_stop), daemon=True)
+        self._monitor_thread.start()
+
+    def _region_monitor(self, bbox, stop):
+        import time as _time
+        interval = 0.3
+        baseline = None
+        changed_ticks = 0
+        while not stop.is_set():
+            _time.sleep(interval)
+            try:
+                frame = screenshot.grab_region(*bbox)
+                thumb = frame.convert("L").resize((64, 64), Image.Resampling.BILINEAR)
+                pixels = list(thumb.getdata())
+                if baseline is None:
+                    baseline = pixels
+                    continue
+                diff = 0.0
+                for old, new in zip(baseline, pixels):
+                    diff += abs(old - new)
+                diff /= len(pixels)
+                stable = float(self.config.get("region_stable", 0.6) or 0.6)
+                needed = max(1, int(round(stable / interval)))
+                if diff > 6.0:
+                    changed_ticks += 1
+                    if changed_ticks >= needed:
+                        baseline = pixels
+                        changed_ticks = 0
+                        self._push("region_changed")
+                else:
+                    changed_ticks = 0
+            except Exception:
+                pass
 
     def open_file_ocr(self):
         if self.streaming:
@@ -771,7 +862,9 @@ class App:
 
     def _on_close(self):
         self.config["auto_send"] = self.auto_var.get()
+        self.config["auto_region"] = self.region_var.get()
         self.config["geometry"] = self.root.geometry()
+        self._monitor_stop.set()
         save_config(self.config)
         self.root.destroy()
 
