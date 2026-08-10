@@ -103,7 +103,7 @@ class SettingsDialog(tk.Toplevel):
             ("模型", "model", 30),
             ("Temperature", "temperature", 8),
             ("Max Tokens", "max_tokens", 8),
-            ("变化后识别延时(秒)", "region_stable", 8),
+            ("识别框内容变化后识别延迟(秒)", "region_stable", 8),
         ]
         self.entries = {}
         for row, (label, key, width) in enumerate(rows):
@@ -126,7 +126,7 @@ class SettingsDialog(tk.Toplevel):
         self.prompt_text.insert("1.0", self.config.get("system_prompt", ""))
         self.prompt_text.grid(row=len(rows), column=1, sticky="we", pady=5)
         result_row = ttk.Frame(frame)
-        result_row.grid(row=len(rows) + 1, column=0, columnspan=2, pady=(10, 0), sticky="w")
+        result_row.grid(row=len(rows) + 1, column=0, columnspan=2, pady=(4, 0), sticky="w")
         self.test_label = tk.Label(result_row, text="", font=(UI_FONT, 10))
         self.test_label.pack(side="left")
         test_row = ttk.Frame(frame)
@@ -300,7 +300,7 @@ class SettingsDialog(tk.Toplevel):
             if region_stable <= 0:
                 raise ValueError
         except ValueError:
-            messagebox.showerror("设置", "Temperature 必须是数字,Max Tokens 必须是整数,变化后识别延时必须是正数")
+            messagebox.showerror("设置", "Temperature 必须是数字,Max Tokens 必须是整数,识别框内容变化后识别延迟必须是正数")
             return
         self.config["api_key"] = self.entries["api_key"].get().strip()
         self.config["base_url"] = self.entries["base_url"].get().strip()
