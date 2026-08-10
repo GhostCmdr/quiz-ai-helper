@@ -12,11 +12,13 @@ from PIL import Image, ImageGrab, ImageTk
 
 import ocr_engine
 import screenshot
+import history_store
 from mimo_client import MiMoClient, StreamStopped
 
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
 CONFIG_PATH = os.path.join(APP_DIR, "config.json")
 INVITE_IMAGE_PATH = os.path.join(APP_DIR, "invite_poster.png")
+HISTORY_PATH = os.path.join(APP_DIR, "history.json")
 
 APP_VERSION = "0.0.1"
 
@@ -26,7 +28,7 @@ DEFAULT_CONFIG = {
     "model": "mimo-v2.5",
     "temperature": 0.7,
     "max_tokens": 2048,
-    "system_prompt": "你是MiMo,小米公司研发的AI智能助手,请根据用户提供的OCR识别文本回答问题。",
+    "system_prompt": "直接回答用户的问题,不要分析过程,不要输出思考过程,不要给出答案解析,直接给出答案",
     "auto_send": True,
     "geometry": "",
     "update_repo": "",
@@ -82,10 +84,11 @@ def enable_dpi_awareness():
 
 
 class SettingsDialog(tk.Toplevel):
-    def __init__(self, master, config, on_save):
+    def __init__(self, master, config, on_save, on_check_update=None):
         super().__init__(master)
         self.config = config
         self.on_save = on_save
+        self.on_check_update = on_check_update
         self.title("设置")
         self.resizable(False, False)
         self.transient(master)
@@ -125,11 +128,15 @@ class SettingsDialog(tk.Toplevel):
         self.test_label.pack(side="left")
         test_row = ttk.Frame(frame)
         test_row.grid(row=len(rows) + 2, column=0, columnspan=2, pady=(8, 0), sticky="ew")
-        self.test_btn = ttk.Button(test_row, text="测试连通", takefocus=0, command=self._test_connection)
+        self.test_btn = ttk.Button(test_row, text="测试连通", takefocus=0, width=8,
+                                   command=self._test_connection)
         self.test_btn.pack(side="left")
-        self.invite_btn = ttk.Button(test_row, text="免费领取10体验金", takefocus=0,
+        self.invite_btn = ttk.Button(test_row, text="领取￥10", takefocus=0, width=8,
                                      command=self._open_invite)
-        self.invite_btn.pack(side="left", padx=(12, 0))
+        self.invite_btn.pack(side="left", padx=(8, 0))
+        self.check_btn = ttk.Button(test_row, text="检查更新", takefocus=0, width=8,
+                                    command=self._check_update)
+        self.check_btn.pack(side="left", padx=(8, 0))
         self._tip_after = None
         self._tip_hide_after = None
         self._tip_win = None
@@ -138,8 +145,8 @@ class SettingsDialog(tk.Toplevel):
         self.invite_btn.bind("<Leave>", self._invite_tip_leave)
         spacer = ttk.Frame(test_row)
         spacer.pack(side="left", fill="x", expand=True)
-        ttk.Button(test_row, text="保存", takefocus=0, command=self._save).pack(side="left", padx=4)
-        ttk.Button(test_row, text="取消", takefocus=0, command=self.destroy).pack(side="left")
+        ttk.Button(test_row, text="保存", takefocus=0, width=8, command=self._save).pack(side="left", padx=4)
+        ttk.Button(test_row, text="取消", takefocus=0, width=8, command=self.destroy).pack(side="left")
         frame.columnconfigure(1, weight=1)
         self.update_idletasks()
         self._center_over(master)
@@ -201,6 +208,10 @@ class SettingsDialog(tk.Toplevel):
 
     def _open_invite(self):
         webbrowser.open("https://platform.xiaomimimo.com?ref=99SDJQ")
+
+    def _check_update(self):
+        if self.on_check_update is not None:
+            self.on_check_update()
 
     def _invite_tip_enter(self, _event):
         try:
@@ -317,7 +328,9 @@ class App:
         self.stats = None
         self._stop_event = threading.Event()
         self._req_id = 0
+        self.history_records = history_store.load_history(HISTORY_PATH)
         self._build_ui()
+        self._refresh_history_list()
         self.root.after(200, self._finalize_min_width)
         self.root.protocol("WM_DELETE_WINDOW", self._on_close)
         self.root.after(100, self._poll_queue)
@@ -352,26 +365,28 @@ class App:
         ttk.Checkbutton(send_frame, text="识别后自动发送", variable=self.auto_var).pack(pady=(3, 0))
         send_frame.pack(side="left", padx=(6, 0))
         ttk.Button(toolbar, text="设置", takefocus=0, command=self.open_settings).pack(side="left", padx=(6, 0))
-        ttk.Button(toolbar, text="检查更新", takefocus=0, command=lambda: self.check_update(True)).pack(side="left", padx=(6, 0))
         spacer = ttk.Frame(toolbar)
         spacer.pack(side="left", fill="x", expand=True)
 
-        paned = ttk.PanedWindow(self.root, orient="vertical")
-        self.paned = paned
-        paned.pack(fill="both", expand=True, padx=8, pady=(0, 4))
+        self.paned_h = tk.PanedWindow(self.root, orient="horizontal", sashwidth=6, sashrelief="flat")
+        self.paned_h.pack(fill="both", expand=True, padx=8, pady=(0, 4))
 
-        ocr_frame = ttk.LabelFrame(paned, text="OCR 识别结果 (可编辑)")
+        left_area = ttk.Frame(self.paned_h)
+        self.paned = ttk.PanedWindow(left_area, orient="vertical")
+        self.paned.pack(fill="both", expand=True)
+
+        ocr_frame = ttk.LabelFrame(self.paned, text="识别结果 (可编辑)")
         self.ocr_text = tk.Text(ocr_frame, wrap="word", font=(UI_FONT, 10), undo=True)
         self.ocr_scroll = ttk.Scrollbar(ocr_frame, command=self.ocr_text.yview)
         self.ocr_text.configure(yscrollcommand=self.ocr_scroll.set)
         self.ocr_text.pack(side="left", fill="both", expand=True)
         self.ocr_scroll.pack(side="right", fill="y")
 
-        result_head = ttk.Frame(paned)
-        ttk.Label(result_head, text="MiMo 回复").pack(side="left")
+        result_head = ttk.Frame(self.paned)
+        ttk.Label(result_head, text="答案").pack(side="left")
         self.speed_label = tk.Label(result_head, text="", fg="#888888", font=(UI_FONT, 9))
         self.speed_label.pack(side="left", padx=(8, 0))
-        result_frame = ttk.LabelFrame(paned, labelwidget=result_head)
+        result_frame = ttk.LabelFrame(self.paned, labelwidget=result_head)
         self.result_text = tk.Text(result_frame, wrap="word", font=(UI_FONT, 10),
                                    state="disabled", cursor="arrow")
         self.result_scroll = ttk.Scrollbar(result_frame, command=self.result_text.yview)
@@ -379,9 +394,30 @@ class App:
         self.result_text.pack(side="left", fill="both", expand=True)
         self.result_scroll.pack(side="right", fill="y")
 
-        paned.add(ocr_frame, weight=2)
-        paned.add(result_frame, weight=3)
+        self.paned.add(ocr_frame, weight=2)
+        self.paned.add(result_frame, weight=3)
+
+        self.history_frame = ttk.LabelFrame(self.paned_h, text="历史库")
+        history_btns = ttk.Frame(self.history_frame)
+        history_btns.columnconfigure(0, weight=1)
+        history_btns.columnconfigure(3, weight=1)
+        ttk.Button(history_btns, text="删除选中", takefocus=0, width=8,
+                   command=self._history_delete).grid(row=0, column=1)
+        ttk.Button(history_btns, text="清空历史", takefocus=0, width=8,
+                   command=self._history_clear).grid(row=0, column=2, padx=(8, 0))
+        history_btns.pack(side="bottom", fill="x", padx=8, pady=(0, 8))
+        self.history_list = tk.Listbox(self.history_frame, font=(UI_FONT, 10),
+                                       exportselection=False, activestyle="none")
+        self.history_scroll = ttk.Scrollbar(self.history_frame, command=self.history_list.yview)
+        self.history_list.configure(yscrollcommand=self.history_scroll.set)
+        self.history_scroll.pack(side="right", fill="y", padx=(0, 8), pady=8)
+        self.history_list.pack(side="left", fill="both", expand=True, padx=(8, 0), pady=(8, 0))
+        self.history_list.bind("<ButtonRelease-1>", self._history_select)
+
+        self.paned_h.add(left_area, minsize=280)
+        self.paned_h.add(self.history_frame, minsize=220)
         self.root.after(150, self._init_sash)
+        self.root.after(150, self._init_sash_h)
 
         self.status = ttk.Label(self.root, text="就绪", anchor="w", relief="sunken", padding=(6, 2))
         self.status.pack(fill="x", side="bottom")
@@ -396,6 +432,11 @@ class App:
         height = self.paned.winfo_height()
         if height > 50:
             self.paned.sashpos(0, int(height * 0.4))
+
+    def _init_sash_h(self):
+        width = self.paned_h.winfo_width()
+        if width > 100:
+            self.paned_h.sash_place(0, int(width * 0.74), -1)
 
     def _update_speed(self):
         if self.streaming and self.stats is not None:
@@ -454,6 +495,12 @@ class App:
             self.streaming = False
             self._set_status("完成 ({} 字)".format(args[1]))
             self._show_final_speed()
+            if len(args) > 2:
+                answer = self.result_text.get("1.0", "end-1c")
+                updated = history_store.add_record(HISTORY_PATH, self.history_records, args[2], answer)
+                if updated is not None:
+                    self.history_records = updated
+                    self._refresh_history_list()
         elif event == "stream_stopped":
             if args[0] != self._req_id:
                 return
@@ -607,7 +654,7 @@ class App:
                 count += len(chunk)
             if self.stats is not None:
                 self.stats["total"] = time.monotonic() - self.stats["start"]
-            self._push("stream_done", req_id, count)
+            self._push("stream_done", req_id, count, text)
         except StreamStopped:
             if self.stats is not None:
                 self.stats["total"] = time.monotonic() - self.stats["start"]
@@ -625,8 +672,78 @@ class App:
         self.speed_label.configure(text="")
         self.stats = None
 
+    def _refresh_history_list(self):
+        self.history_list.delete(0, "end")
+        for record in self.history_records:
+            question = (record.get("q") or "").replace("\n", " ")
+            if len(question) > 40:
+                question = question[:40] + "…"
+            self.history_list.insert("end", question)
+
+    def _history_select(self, event):
+        if self.streaming:
+            return
+        selection = self.history_list.curselection()
+        if not selection:
+            return
+        record = self.history_records[selection[0]]
+        self.ocr_text.delete("1.0", "end")
+        self.ocr_text.insert("1.0", record.get("q", ""))
+        self.result_text.configure(state="normal")
+        self.result_text.delete("1.0", "end")
+        self.result_text.insert("1.0", record.get("a", ""))
+        self.result_text.configure(state="disabled")
+        self.speed_label.configure(text="")
+        self.stats = None
+        self._set_status("已载入历史")
+
+    def _history_delete(self):
+        selection = self.history_list.curselection()
+        if not selection:
+            return
+        del self.history_records[selection[0]]
+        history_store.save_history(HISTORY_PATH, self.history_records)
+        self._refresh_history_list()
+        self._set_status("已删除历史条目")
+
+    def _history_clear(self):
+        if not self.history_records:
+            return
+        self._confirm_clear_history()
+
+    def _confirm_clear_history(self):
+        dialog = tk.Toplevel(self.root)
+        dialog.title("清空历史")
+        dialog.resizable(False, False)
+        dialog.transient(self.root)
+        dialog.grab_set()
+        frame = ttk.Frame(dialog, padding=16)
+        frame.pack(fill="both", expand=True)
+        ttk.Label(frame, text="确定要清空全部历史记录吗?").pack(pady=(0, 14))
+        buttons = ttk.Frame(frame)
+        buttons.columnconfigure(0, weight=1)
+        buttons.columnconfigure(3, weight=1)
+        ttk.Button(buttons, text="确定", width=8, takefocus=0,
+                   command=lambda: (dialog.destroy(), self._do_clear_history())).grid(row=0, column=1)
+        ttk.Button(buttons, text="取消", width=8, takefocus=0,
+                   command=dialog.destroy).grid(row=0, column=2, padx=(8, 0))
+        buttons.pack()
+        dialog.update_idletasks()
+        width = dialog.winfo_width()
+        height = dialog.winfo_height()
+        x = self.root.winfo_rootx() + (self.root.winfo_width() - width) // 2
+        y = self.root.winfo_rooty() + (self.root.winfo_height() - height) // 2
+        dialog.geometry("+{}+{}".format(max(0, x), max(0, y)))
+
+    def _do_clear_history(self):
+        self.history_records = []
+        history_store.save_history(HISTORY_PATH, self.history_records)
+        self._refresh_history_list()
+        self._set_status("历史已清空")
+
     def open_settings(self):
-        SettingsDialog(self.root, self.config, on_save=self._on_settings_saved)
+        SettingsDialog(self.root, self.config, on_save=self._on_settings_saved,
+                       on_check_update=lambda: self.check_update(True))
 
     def _on_settings_saved(self):
         self._set_status("设置已保存")
