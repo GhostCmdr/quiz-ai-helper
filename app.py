@@ -520,7 +520,7 @@ class App:
             if not found:
                 if manual:
                     self._set_status("检查更新失败")
-                    messagebox.showinfo("检查更新", "检查失败(网络异常或仓库地址错误)")
+                    messagebox.showinfo("检查更新", "检查失败(仓库暂未发布版本或网络异常)")
                 return
             if tag and compare_versions(APP_VERSION, tag) < 0:
                 if messagebox.askyesno(
@@ -552,9 +552,30 @@ class App:
                 data = json.loads(response.read().decode("utf-8", "replace"))
             tag = data.get("tag_name", "")
             url = data.get("html_url", "")
+            found = bool(tag)
         except Exception:
-            data, tag, url = None, "", ""
-        self._push("update_result", data is not None, tag, url, manual)
+            tag, url = self._latest_release_fallback(repo)
+            found = bool(tag)
+        self._push("update_result", found, tag, url, manual)
+
+    def _latest_release_fallback(self, repo):
+        try:
+            request = urllib.request.Request(
+                "https://github.com/" + repo + "/releases/latest",
+                headers={"User-Agent": "quiz-ai-helper"},
+            )
+            with urllib.request.urlopen(request, timeout=10) as response:
+                location = response.geturl()
+            marker = "/releases/tag/"
+            index = location.rfind(marker)
+            if index < 0:
+                return "", ""
+            tag = location[index + len(marker):].rstrip("/")
+            if not tag:
+                return "", ""
+            return tag, "https://github.com/" + repo + "/releases/tag/" + tag
+        except Exception:
+            return "", ""
 
     def capture_ocr(self):
         if self.streaming:
