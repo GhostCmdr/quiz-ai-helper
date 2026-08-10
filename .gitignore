@@ -1,6 +1,7 @@
 __pycache__/
 *.pyc
 config.json
+history.json
 dist/
 *.log
 Thumbs.db
