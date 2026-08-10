@@ -10,9 +10,12 @@
 - 🤖 **流式回答**:MiMo 大模型逐字流式返回,实时显示响应速度
 - 🧠 **全系模型**:mimo-v2.5 / mimo-v2.5-pro / mimo-v2.5-pro-ultraspeed 下拉切换
 - 🧹 **一键清空**:清空文本框,同时中断 MiMo 服务端生成(断连即停,不浪费 Token)
+- 📚 **历史库**:自动记录查询过的题目与答案(同题去重、上限 500 条),点击条目一键回填查看
+- 🪟 **左右分栏**:左侧 识别结果/答案,右侧 历史库,分隔条可拖动
 - ⚙️ **灵活配置**:Base URL 下拉(按量付费 / Token Plan)、模型下拉、系统提示词自定义
 - 📶 **测试连通**:一键验证 Key + 网络,显示「连通成功,响应X.XX秒」
-- 🎁 **邀请福利**:内置"免费领取10体验金"入口,悬停可查看宣传图
+- 🔄 **检查更新**:位于设置弹窗内,对比 GitHub 最新 Release 版本
+- 🎁 **邀请福利**:内置「领取￥10」入口,悬停可查看宣传图
 
 ## 快速开始
 
@@ -56,12 +59,13 @@ python app.py
   "model": "mimo-v2.5",
   "temperature": 0.2,
   "max_tokens": 2048,
-  "system_prompt": "直接简洁回答用户问题,不要分析过程,优先给出答案",
-  "auto_send": true
+  "system_prompt": "直接回答用户的问题,不要分析过程,不要输出思考过程,不要给出答案解析,直接给出答案",
+  "auto_send": true,
+  "update_repo": "GhostCmdr/quiz-ai-helper"
 }
 ```
 
-常用配置项均可直接在「设置」界面修改,无需手工编辑文件。
+常用配置项均可直接在「设置」界面修改,无需手工编辑文件。`history.json` 为历史库数据(同样被 .gitignore 忽略,不会提交)。
 
 ## 项目结构
 
@@ -70,6 +74,7 @@ app.py            主程序(界面 + 逻辑)
 mimo_client.py    MiMo API 客户端(流式 / 中断)
 ocr_engine.py     Windows OCR 封装
 screenshot.py     屏幕选区截图
+history_store.py  历史库读写(去重 / 上限)
 requirements.txt  依赖清单
 config.example.json  配置模板
 ```
@@ -82,7 +87,7 @@ config.example.json  配置模板
 https://platform.xiaomimimo.com?ref=99SDJQ
 ```
 
-软件内「设置 → 免费领取10体验金」按钮已内置该入口。
+软件内「设置 → 领取￥10」按钮已内置该入口。
 
 ## 免责声明
 
