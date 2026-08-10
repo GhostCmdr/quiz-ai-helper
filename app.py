@@ -103,7 +103,7 @@ class SettingsDialog(tk.Toplevel):
             ("模型", "model", 30),
             ("Temperature", "temperature", 8),
             ("Max Tokens", "max_tokens", 8),
-            ("识别框内容变化后识别延迟(秒)", "region_stable", 8),
+            ("内容识别延迟(秒)", "region_stable", 8),
         ]
         self.entries = {}
         for row, (label, key, width) in enumerate(rows):
@@ -300,7 +300,7 @@ class SettingsDialog(tk.Toplevel):
             if region_stable <= 0:
                 raise ValueError
         except ValueError:
-            messagebox.showerror("设置", "Temperature 必须是数字,Max Tokens 必须是整数,识别框内容变化后识别延迟必须是正数")
+            messagebox.showerror("设置", "Temperature 必须是数字,Max Tokens 必须是整数,内容识别延迟必须是正数")
             return
         self.config["api_key"] = self.entries["api_key"].get().strip()
         self.config["base_url"] = self.entries["base_url"].get().strip()
