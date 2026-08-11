@@ -340,6 +340,8 @@ class App:
         self._monitor_stop = threading.Event()
         self._pending_region_change = False
         self.history_records = history_store.load_history(HISTORY_PATH)
+        self.root.option_add("*TButton.takeFocus", "0")
+        self.root.option_add("*TCheckbutton.takeFocus", "0")
         self._build_ui()
         self._refresh_history_list()
         self.root.after(200, self._finalize_min_width)
