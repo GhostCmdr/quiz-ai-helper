@@ -317,6 +317,81 @@ class SettingsDialog(tk.Toplevel):
         self.destroy()
 
 
+class OptionZone:
+    def __init__(self, root, label, color, on_change=None):
+        self.root = root
+        self.on_change = on_change
+        self.win = tk.Toplevel(root)
+        self.win.overrideredirect(True)
+        self.win.attributes("-topmost", True)
+        self.win.configure(bg=color)
+        self.win.attributes("-alpha", 0.45)
+        self.label = tk.Label(self.win, text=label, bg=color, fg="white",
+                              font=(UI_FONT, 12, "bold"), cursor="fleur")
+        self.label.pack(fill="both", expand=True)
+        close_btn = tk.Label(self.win, text="✕", bg=color, fg="white",
+                             font=(UI_FONT, 11, "bold"), cursor="hand2")
+        close_btn.place(relx=1.0, x=-6, y=2, anchor="ne")
+        close_btn.bind("<Button-1>", lambda e: self.hide(save=True))
+        self.win.bind("<ButtonPress-1>", self._start_move)
+        self.win.bind("<B1-Motion>", self._move)
+        self.win.bind("<ButtonRelease-1>", lambda e: self._changed())
+        handle = tk.Label(self.win, text="◢", bg=color, fg="white",
+                          font=(UI_FONT, 10), cursor="size_nw_se")
+        handle.place(relx=1.0, rely=1.0, anchor="se")
+        handle.bind("<ButtonPress-1>", self._start_resize)
+        handle.bind("<B1-Motion>", self._resize)
+        self.win.withdraw()
+        self._drag_off = (0, 0)
+        self._resize_start = None
+
+    def is_visible(self):
+        return bool(self.win.winfo_viewable())
+
+    def set_geometry(self, bbox):
+        x1, y1, x2, y2 = bbox
+        self.win.geometry("{}x{}+{}+{}".format(max(60, x2 - x1), max(36, y2 - y1), int(x1), int(y1)))
+
+    def bbox(self):
+        x = self.win.winfo_x()
+        y = self.win.winfo_y()
+        return (x, y, x + self.win.winfo_width(), y + self.win.winfo_height())
+
+    def show(self):
+        self.win.update_idletasks()
+        self.win.deiconify()
+        self.win.lift()
+
+    def hide(self, save=True):
+        self.win.withdraw()
+        if save and self.on_change is not None:
+            self.on_change(self.bbox())
+
+    def _start_move(self, event):
+        self._drag_off = (event.x_root - self.win.winfo_x(), event.y_root - self.win.winfo_y())
+
+    def _move(self, event):
+        x = event.x_root - self._drag_off[0]
+        y = event.y_root - self._drag_off[1]
+        self.win.geometry("+{}+{}".format(x, y))
+
+    def _start_resize(self, event):
+        self._resize_start = (event.x_root, event.y_root, self.win.winfo_x(),
+                              self.win.winfo_y(), self.win.winfo_width(), self.win.winfo_height())
+
+    def _resize(self, event):
+        if self._resize_start is None:
+            return
+        sx, sy, ox, oy, ow, oh = self._resize_start
+        new_w = max(60, ow + (event.x_root - sx))
+        new_h = max(36, oh + (event.y_root - sy))
+        self.win.geometry("{}x{}+{}+{}".format(new_w, new_h, ox, oy))
+
+    def _changed(self):
+        if self.on_change is not None:
+            self.on_change(self.bbox())
+
+
 class App:
     def __init__(self):
         self.root = tk.Tk()
@@ -344,7 +419,7 @@ class App:
         self._pending_region_change = False
         self.option_correct_bbox = self.config.get("option_correct")
         self.option_wrong_bbox = self.config.get("option_wrong")
-        self._option_select_step = 0
+        self._zones = None
         self.history_records = history_store.load_history(HISTORY_PATH)
         self.root.option_add("*TButton.takeFocus", "0")
         self.root.option_add("*TCheckbutton.takeFocus", "0")
@@ -391,7 +466,8 @@ class App:
         answer_frame = ttk.Frame(toolbar)
         ttk.Button(answer_frame, text="选项区域", takefocus=0, command=self._on_option_region).pack()
         self.auto_answer_var = tk.BooleanVar(value=self.config.get("auto_answer", False))
-        ttk.Checkbutton(answer_frame, text="全自动答题", variable=self.auto_answer_var, takefocus=0).pack(pady=(3, 0))
+        ttk.Checkbutton(answer_frame, text="全自动答题", variable=self.auto_answer_var, takefocus=0,
+                        command=self._on_auto_answer_toggle).pack(pady=(3, 0))
         answer_frame.pack(side="left", padx=(6, 0))
         ttk.Button(toolbar, text="设置", takefocus=0, command=self.open_settings).pack(side="left", padx=(6, 0))
         spacer = ttk.Frame(toolbar)
@@ -652,29 +728,55 @@ class App:
             self._set_status("区域自动识别已关闭")
 
     def _on_option_region(self):
-        if self._option_select_step == 0:
-            self._set_status("请框选「正确」选项的位置")
-            self._option_select_step = 1
+        if self._zones and any(zone.is_visible() for zone in self._zones):
+            self._hide_option_zones()
         else:
-            self._set_status("请框选「错误」选项的位置")
-            self._option_select_step = 2
-        selector = screenshot.RegionSelector(self.root, on_done=self._on_option_region_selected,
-                                             on_cancel=lambda: self._cancel_option_region())
-        selector.start()
+            self._show_option_zones()
 
-    def _cancel_option_region(self):
-        self._option_select_step = 0
-        self._set_status("选项区域设置已取消")
+    def _on_auto_answer_toggle(self):
+        if self.auto_answer_var.get():
+            if self.option_correct_bbox is None or self.option_wrong_bbox is None:
+                self._show_option_zones()
 
-    def _on_option_region_selected(self, bbox):
-        if self._option_select_step == 1:
+    def _show_option_zones(self):
+        if self._zones is None:
+            zones = []
+            for key, label, color in (("correct", "正确", "#2e7d32"), ("wrong", "错误", "#c62828")):
+                zone = OptionZone(self.root, label, color,
+                                  on_change=lambda bbox, k=key: self._set_option_bbox(k, bbox))
+                zones.append(zone)
+            self._zones = zones
+        width, height = 260, 70
+        gap = 24
+        vx = ctypes.windll.user32.GetSystemMetrics(76)
+        vy = ctypes.windll.user32.GetSystemMetrics(77)
+        vw = ctypes.windll.user32.GetSystemMetrics(78)
+        vh = ctypes.windll.user32.GetSystemMetrics(79)
+        x = vx + (vw - width) // 2
+        y_top = vy + (vh - height * 2 - gap) // 2
+        defaults = (
+            (x, y_top, x + width, y_top + height),
+            (x, y_top + height + gap, x + width, y_top + height * 2 + gap),
+        )
+        self._zones[0].set_geometry(self.option_correct_bbox or defaults[0])
+        self._zones[1].set_geometry(self.option_wrong_bbox or defaults[1])
+        for zone in self._zones:
+            zone.show()
+        self._set_status("拖动/缩放调整「正确」「错误」框,再点「选项区域」或点 ✕ 完成")
+
+    def _hide_option_zones(self):
+        for zone in self._zones or []:
+            zone.hide(save=True)
+        self.config["option_correct"] = self.option_correct_bbox
+        self.config["option_wrong"] = self.option_wrong_bbox
+        save_config(self.config)
+        self._set_status("选项区域已保存")
+
+    def _set_option_bbox(self, key, bbox):
+        if key == "correct":
             self.option_correct_bbox = list(bbox)
-            self._set_status("已设置「正确」区域,请点击「选项区域」框选「错误」")
-            self._option_select_step = 2
         else:
             self.option_wrong_bbox = list(bbox)
-            self._set_status("两个选项区域已设置完成")
-            self._option_select_step = 0
 
     def _stop_region_monitor(self):
         self._monitor_stop.set()
@@ -698,6 +800,9 @@ class App:
         if self.option_correct_bbox is None or self.option_wrong_bbox is None:
             self._set_status("选项区域未设置完整,未自动点击")
             return
+        if self._zones:
+            for zone in self._zones:
+                zone.hide(save=False)
         correct_keywords = ["正确", "对", "是", "TRUE", "YES", "A", "1"]
         wrong_keywords = ["错误", "错", "否", "FALSE", "NO", "B", "2"]
         bbox = None
@@ -807,6 +912,9 @@ class App:
     def send_to_mimo(self):
         if self.streaming:
             return
+        if self._zones:
+            for zone in self._zones:
+                zone.hide(save=False)
         text = self.ocr_text.get("1.0", "end-1c").strip()
         if not text:
             messagebox.showinfo("提示", "请先识别或输入文本")
@@ -952,6 +1060,9 @@ class App:
         self.config["option_wrong"] = self.option_wrong_bbox
         self.config["geometry"] = self.root.geometry()
         self._monitor_stop.set()
+        if self._zones:
+            for zone in self._zones:
+                zone.hide(save=True)
         save_config(self.config)
         self.root.destroy()
 
