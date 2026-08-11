@@ -32,6 +32,9 @@ DEFAULT_CONFIG = {
     "auto_send": True,
     "auto_region": False,
     "region_stable": 0.6,
+    "auto_answer": False,
+    "option_correct": None,
+    "option_wrong": None,
     "geometry": "",
     "update_repo": "",
 }
@@ -339,6 +342,9 @@ class App:
         self._monitor_thread = None
         self._monitor_stop = threading.Event()
         self._pending_region_change = False
+        self.option_correct_bbox = self.config.get("option_correct")
+        self.option_wrong_bbox = self.config.get("option_wrong")
+        self._option_select_step = 0
         self.history_records = history_store.load_history(HISTORY_PATH)
         self.root.option_add("*TButton.takeFocus", "0")
         self.root.option_add("*TCheckbutton.takeFocus", "0")
@@ -382,6 +388,11 @@ class App:
         self.auto_var = tk.BooleanVar(value=self.config.get("auto_send", True))
         ttk.Checkbutton(send_frame, text="识别后自动发送", variable=self.auto_var, takefocus=0).pack(pady=(3, 0))
         send_frame.pack(side="left", padx=(6, 0))
+        answer_frame = ttk.Frame(toolbar)
+        ttk.Button(answer_frame, text="选项区域", takefocus=0, command=self._on_option_region).pack()
+        self.auto_answer_var = tk.BooleanVar(value=self.config.get("auto_answer", False))
+        ttk.Checkbutton(answer_frame, text="全自动答题", variable=self.auto_answer_var, takefocus=0).pack(pady=(3, 0))
+        answer_frame.pack(side="left", padx=(6, 0))
         ttk.Button(toolbar, text="设置", takefocus=0, command=self.open_settings).pack(side="left", padx=(6, 0))
         spacer = ttk.Frame(toolbar)
         spacer.pack(side="left", fill="x", expand=True)
@@ -527,6 +538,10 @@ class App:
                 if updated is not None:
                     self.history_records = updated
                     self._refresh_history_list()
+                sel = self._auto_answer_match(answer)
+                if sel and updated is not None:
+                    self.history_records[0]["sel"] = sel
+                    history_store.save_history(HISTORY_PATH, self.history_records)
             if self._pending_region_change:
                 self._pending_region_change = False
                 self._region_changed_proc()
@@ -636,6 +651,31 @@ class App:
             self._stop_region_monitor()
             self._set_status("区域自动识别已关闭")
 
+    def _on_option_region(self):
+        if self._option_select_step == 0:
+            self._set_status("请框选「正确」选项的位置")
+            self._option_select_step = 1
+        else:
+            self._set_status("请框选「错误」选项的位置")
+            self._option_select_step = 2
+        selector = screenshot.RegionSelector(self.root, on_done=self._on_option_region_selected,
+                                             on_cancel=lambda: self._cancel_option_region())
+        selector.start()
+
+    def _cancel_option_region(self):
+        self._option_select_step = 0
+        self._set_status("选项区域设置已取消")
+
+    def _on_option_region_selected(self, bbox):
+        if self._option_select_step == 1:
+            self.option_correct_bbox = list(bbox)
+            self._set_status("已设置「正确」区域,请点击「选项区域」框选「错误」")
+            self._option_select_step = 2
+        else:
+            self.option_wrong_bbox = list(bbox)
+            self._set_status("两个选项区域已设置完成")
+            self._option_select_step = 0
+
     def _stop_region_monitor(self):
         self._monitor_stop.set()
         if self._monitor_thread is not None:
@@ -648,6 +688,44 @@ class App:
             self._set_status("区域截图失败")
             return
         self._start_ocr(image)
+
+    def _auto_answer_match(self, answer_text):
+        text = (answer_text or "").strip()
+        if not text:
+            return
+        if not self.auto_answer_var.get():
+            return
+        if self.option_correct_bbox is None or self.option_wrong_bbox is None:
+            self._set_status("选项区域未设置完整,未自动点击")
+            return
+        correct_keywords = ["正确", "对", "是", "TRUE", "YES", "A", "1"]
+        wrong_keywords = ["错误", "错", "否", "FALSE", "NO", "B", "2"]
+        bbox = None
+        clicked_label = ""
+        for kw in correct_keywords:
+            if kw in text:
+                bbox = self.option_correct_bbox
+                clicked_label = "正确"
+                break
+        if bbox is None:
+            for kw in wrong_keywords:
+                if kw in text:
+                    bbox = self.option_wrong_bbox
+                    clicked_label = "错误"
+                    break
+        if bbox is None:
+            self._set_status("未匹配到选项,未自动点击")
+            return
+        cx = (bbox[0] + bbox[2]) // 2
+        cy = (bbox[1] + bbox[3]) // 2
+        self._click_at(cx, cy)
+        self._set_status("已自动选择 {}".format(clicked_label))
+        return clicked_label
+
+    def _click_at(self, x, y):
+        ctypes.windll.user32.SetCursorPos(int(x), int(y))
+        ctypes.windll.user32.mouse_event(0x0002, 0, 0, 0, 0)
+        ctypes.windll.user32.mouse_event(0x0004, 0, 0, 0, 0)
 
     def _start_region_monitor(self):
         self._monitor_stop.set()
@@ -749,13 +827,16 @@ class App:
         import time
         self.stats = {"start": time.monotonic(), "first": None, "chars": 0, "total": None}
         self._push("stream_start", req_id)
+        system_prompt = self.config["system_prompt"]
+        if self.auto_answer_var.get():
+            system_prompt += "\n如果是判断题,只回答正确或错误,不要输出其他内容。"
         client = MiMoClient(
             api_key=self.config["api_key"],
             base_url=self.config["base_url"],
             model=self.config["model"],
             temperature=self.config["temperature"],
             max_tokens=self.config["max_tokens"],
-            system_prompt=self.config["system_prompt"],
+            system_prompt=system_prompt,
         )
         count = 0
         try:
@@ -866,6 +947,9 @@ class App:
     def _on_close(self):
         self.config["auto_send"] = self.auto_var.get()
         self.config["auto_region"] = self.region_var.get()
+        self.config["auto_answer"] = self.auto_answer_var.get()
+        self.config["option_correct"] = self.option_correct_bbox
+        self.config["option_wrong"] = self.option_wrong_bbox
         self.config["geometry"] = self.root.geometry()
         self._monitor_stop.set()
         save_config(self.config)
