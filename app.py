@@ -332,6 +332,7 @@ class OptionZone:
         close_btn = tk.Label(self.win, text="✕", bg=color, fg="white",
                              font=(UI_FONT, 11, "bold"), cursor="hand2")
         close_btn.place(relx=1.0, x=-6, y=2, anchor="ne")
+        close_btn.bindtags((close_btn._w, "Label"))
         close_btn.bind("<Button-1>", lambda e: self.hide(save=True))
         self.win.bind("<ButtonPress-1>", self._start_move)
         self.win.bind("<B1-Motion>", self._move)
@@ -339,8 +340,10 @@ class OptionZone:
         handle = tk.Label(self.win, text="◢", bg=color, fg="white",
                           font=(UI_FONT, 10), cursor="size_nw_se")
         handle.place(relx=1.0, rely=1.0, anchor="se")
+        handle.bindtags((handle._w, "Label"))
         handle.bind("<ButtonPress-1>", self._start_resize)
         handle.bind("<B1-Motion>", self._resize)
+        handle.bind("<ButtonRelease-1>", lambda e: self._changed())
         self.win.withdraw()
         self._drag_off = (0, 0)
         self._resize_start = None
