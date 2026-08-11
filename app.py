@@ -37,6 +37,7 @@ DEFAULT_CONFIG = {
     "option_wrong": None,
     "geometry": "",
     "update_repo": "",
+    "update_silent": "",
 }
 
 
@@ -646,11 +647,9 @@ class App:
                     messagebox.showinfo("检查更新", "检查失败(仓库暂未发布版本或网络异常)")
                 return
             if tag and compare_versions(APP_VERSION, tag) < 0:
-                if messagebox.askyesno(
-                    "发现新版本",
-                    "新版本 {} 已发布\n当前版本 {}\n\n是否前往 GitHub 下载?".format(tag, APP_VERSION),
-                ):
-                    webbrowser.open(url)
+                if not manual and tag == (self.config.get("update_silent") or ""):
+                    return
+                self._show_update_dialog(tag, url)
             elif manual:
                 self._set_status("已是最新版本")
                 messagebox.showinfo("检查更新", "当前已是最新版本 ({})".format(APP_VERSION))
@@ -1041,6 +1040,39 @@ class App:
         x = self.root.winfo_rootx() + (self.root.winfo_width() - width) // 2
         y = self.root.winfo_rooty() + (self.root.winfo_height() - height) // 2
         dialog.geometry("+{}+{}".format(max(0, x), max(0, y)))
+
+    def _show_update_dialog(self, tag, url):
+        dialog = tk.Toplevel(self.root)
+        dialog.title("发现新版本")
+        dialog.resizable(False, False)
+        dialog.transient(self.root)
+        dialog.grab_set()
+        frame = ttk.Frame(dialog, padding=16)
+        frame.pack(fill="both", expand=True)
+        ttk.Label(frame, text="新版本 {} 已发布\n当前版本 {}\n\n是否前往 GitHub 下载?".format(tag, APP_VERSION),
+                  justify="center").pack(pady=(0, 14))
+        buttons = ttk.Frame(frame)
+        buttons.columnconfigure(0, weight=1)
+        buttons.columnconfigure(4, weight=1)
+        ttk.Button(buttons, text="前往下载", width=8, takefocus=0,
+                   command=lambda: (webbrowser.open(url), dialog.destroy())).grid(row=0, column=1)
+        ttk.Button(buttons, text="不再提醒", width=8, takefocus=0,
+                   command=lambda: (self._silence_update(tag), dialog.destroy())).grid(row=0, column=2, padx=(8, 0))
+        ttk.Button(buttons, text="以后再说", width=8, takefocus=0,
+                   command=dialog.destroy).grid(row=0, column=3, padx=(8, 0))
+        buttons.pack()
+        dialog.update_idletasks()
+        width = dialog.winfo_width()
+        height = dialog.winfo_height()
+        x = self.root.winfo_rootx() + (self.root.winfo_width() - width) // 2
+        y = self.root.winfo_rooty() + (self.root.winfo_height() - height) // 2
+        dialog.geometry("+{}+{}".format(max(0, x), max(0, y)))
+        return dialog
+
+    def _silence_update(self, tag):
+        self.config["update_silent"] = tag
+        save_config(self.config)
+        self._set_status("已忽略版本 {} 的更新提醒".format(tag))
 
     def _do_clear_history(self):
         self.history_records = []
