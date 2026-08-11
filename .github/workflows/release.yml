@@ -1,13 +1,12 @@
 name: Release
 
 on:
-  push:
-    tags:
-      - 'v*'
+  release:
+    types: [published]
 
 permissions:
   contents: write
-  
+
 jobs:
   build:
     runs-on: windows-latest
@@ -32,3 +31,4 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: dist/quiz-ai-helper.exe
+          tag_name: ${{ github.event.release.tag_name }}
