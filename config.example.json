@@ -9,8 +9,8 @@
   "auto_region": false,
   "region_stable": 0.6,
   "auto_answer": false,
-  "option_correct": null,
-  "option_wrong": null,
+  "option_zones": [],
   "geometry": "",
-  "update_repo": ""
+  "update_repo": "",
+  "update_silent": ""
 }

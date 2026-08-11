@@ -33,8 +33,7 @@ DEFAULT_CONFIG = {
     "auto_region": False,
     "region_stable": 0.6,
     "auto_answer": False,
-    "option_correct": None,
-    "option_wrong": None,
+    "option_zones": [],
     "geometry": "",
     "update_repo": "",
     "update_silent": "",
@@ -68,6 +67,14 @@ def load_config():
             config.update(json.load(file))
     except (OSError, json.JSONDecodeError):
         pass
+    if not config.get("option_zones") and (config.get("option_correct") or config.get("option_wrong")):
+        zones = []
+        for label, color, key in (("正确", "#2e7d32", "option_correct"),
+                                  ("错误", "#c62828", "option_wrong")):
+            bbox = config.get(key)
+            if bbox:
+                zones.append({"label": label, "bbox": list(bbox), "color": color})
+        config["option_zones"] = zones
     return config
 
 
@@ -319,9 +326,13 @@ class SettingsDialog(tk.Toplevel):
 
 
 class OptionZone:
-    def __init__(self, root, label, color, on_change=None):
+    def __init__(self, root, label, color, on_change=None, on_close=None,
+                 on_label_change=None, on_geometry_changed=None):
         self.root = root
         self.on_change = on_change
+        self.on_close = on_close
+        self.on_label_change = on_label_change
+        self.on_geometry_changed = on_geometry_changed
         self.win = tk.Toplevel(root)
         self.win.overrideredirect(True)
         self.win.attributes("-topmost", True)
@@ -330,11 +341,12 @@ class OptionZone:
         self.label = tk.Label(self.win, text=label, bg=color, fg="white",
                               font=(UI_FONT, 12, "bold"), cursor="fleur")
         self.label.pack(fill="both", expand=True)
+        self.label.bind("<Double-Button-1>", lambda e: self._edit_label())
         close_btn = tk.Label(self.win, text="✕", bg=color, fg="white",
                              font=(UI_FONT, 11, "bold"), cursor="hand2")
         close_btn.place(relx=1.0, x=-6, y=2, anchor="ne")
         close_btn.bindtags((close_btn._w, "Label"))
-        close_btn.bind("<Button-1>", lambda e: self.hide(save=True))
+        close_btn.bind("<Button-1>", lambda e: self._close())
         self.win.bind("<ButtonPress-1>", self._start_move)
         self.win.bind("<B1-Motion>", self._move)
         self.win.bind("<ButtonRelease-1>", lambda e: self._changed())
@@ -371,6 +383,48 @@ class OptionZone:
         if save and self.on_change is not None:
             self.on_change(self.bbox())
 
+    def set_label(self, text):
+        self.label.configure(text=text)
+
+    def _close(self):
+        if self.on_close is not None:
+            self.on_close()
+
+    def _edit_label(self):
+        dialog = tk.Toplevel(self.win)
+        dialog.title("编辑选项文字")
+        dialog.resizable(False, False)
+        dialog.transient(self.win)
+        dialog.grab_set()
+        frame = ttk.Frame(dialog, padding=10)
+        frame.pack(fill="both", expand=True)
+        entry = ttk.Entry(frame, width=12)
+        entry.insert(0, self.label.cget("text"))
+        entry.pack(pady=(0, 8))
+        entry.focus_set()
+        entry.select_range(0, "end")
+
+        def confirm(event=None):
+            new_text = entry.get().strip() or self.label.cget("text")
+            self.set_label(new_text)
+            dialog.destroy()
+            if self.on_label_change is not None:
+                self.on_label_change(new_text)
+
+        entry.bind("<Return>", confirm)
+        buttons = ttk.Frame(frame)
+        buttons.columnconfigure(0, weight=1)
+        buttons.columnconfigure(3, weight=1)
+        ttk.Button(buttons, text="确定", width=6, takefocus=0, command=confirm).grid(row=0, column=1)
+        ttk.Button(buttons, text="取消", width=6, takefocus=0, command=dialog.destroy).grid(row=0, column=2, padx=(6, 0))
+        buttons.pack()
+        dialog.update_idletasks()
+        width = dialog.winfo_width()
+        height = dialog.winfo_height()
+        x = self.win.winfo_rootx() + (self.win.winfo_width() - width) // 2
+        y = self.win.winfo_rooty() + self.win.winfo_height() + 8
+        dialog.geometry("+{}+{}".format(max(0, x), max(0, y)))
+
     def _start_move(self, event):
         self._drag_off = (event.x_root - self.win.winfo_x(), event.y_root - self.win.winfo_y())
 
@@ -378,6 +432,7 @@ class OptionZone:
         x = event.x_root - self._drag_off[0]
         y = event.y_root - self._drag_off[1]
         self.win.geometry("+{}+{}".format(x, y))
+        self._notify_geometry()
 
     def _start_resize(self, event):
         self._resize_start = (event.x_root, event.y_root, self.win.winfo_x(),
@@ -390,10 +445,51 @@ class OptionZone:
         new_w = max(60, ow + (event.x_root - sx))
         new_h = max(36, oh + (event.y_root - sy))
         self.win.geometry("{}x{}+{}+{}".format(new_w, new_h, ox, oy))
+        self._notify_geometry()
 
     def _changed(self):
         if self.on_change is not None:
             self.on_change(self.bbox())
+
+    def _notify_geometry(self):
+        if self.on_geometry_changed is not None:
+            self.win.update_idletasks()
+            self.on_geometry_changed(self.bbox())
+
+
+class AddZoneButton:
+    """圆形加号按钮,跟随最后一个选项框下方。"""
+
+    def __init__(self, root, on_add=None):
+        self.on_add = on_add
+        self.win = tk.Toplevel(root)
+        self.win.overrideredirect(True)
+        self.win.attributes("-topmost", True)
+        self.win.attributes("-alpha", 0.9)
+        self.canvas = tk.Canvas(self.win, width=26, height=26, bg="#2e7d32",
+                                highlightthickness=0, cursor="hand2")
+        self.canvas.pack()
+        self.canvas.create_oval(1, 1, 25, 25, fill="#2e7d32", outline="white", width=2)
+        self.canvas.create_line(13, 6, 13, 20, fill="white", width=2)
+        self.canvas.create_line(6, 13, 20, 13, fill="white", width=2)
+        self.canvas.bind("<Button-1>", lambda e: self._click())
+        self.win.withdraw()
+
+    def _click(self):
+        if self.on_add is not None:
+            self.on_add()
+
+    def follow(self, bbox):
+        x1, y1, x2, y2 = bbox
+        cx = (x1 + x2) // 2
+        self.win.geometry("+{}+{}".format(cx - 13, int(y2) + 10))
+
+    def show(self):
+        self.win.deiconify()
+        self.win.lift()
+
+    def hide(self):
+        self.win.withdraw()
 
 
 class App:
@@ -421,9 +517,9 @@ class App:
         self._monitor_thread = None
         self._monitor_stop = threading.Event()
         self._pending_region_change = False
-        self.option_correct_bbox = self.config.get("option_correct")
-        self.option_wrong_bbox = self.config.get("option_wrong")
+        self.option_zones = [dict(z) for z in (self.config.get("option_zones") or [])]
         self._zones = None
+        self._add_btn = None
         self.history_records = history_store.load_history(HISTORY_PATH)
         self.root.option_add("*TButton.takeFocus", "0")
         self.root.option_add("*TCheckbutton.takeFocus", "0")
@@ -737,48 +833,120 @@ class App:
 
     def _on_auto_answer_toggle(self):
         if self.auto_answer_var.get():
-            if self.option_correct_bbox is None or self.option_wrong_bbox is None:
+            if not self.option_zones or any(not zone.get("bbox") for zone in self.option_zones):
                 self._show_option_zones()
 
     def _show_option_zones(self):
-        if self._zones is None:
-            zones = []
-            for key, label, color in (("correct", "正确", "#2e7d32"), ("wrong", "错误", "#c62828")):
-                zone = OptionZone(self.root, label, color,
-                                  on_change=lambda bbox, k=key: self._set_option_bbox(k, bbox))
-                zones.append(zone)
-            self._zones = zones
-        width, height = 260, 70
-        gap = 24
+        if not self.option_zones:
+            self.option_zones = [
+                {"label": "正确", "bbox": None, "color": "#2e7d32"},
+                {"label": "错误", "bbox": None, "color": "#c62828"},
+            ]
+        self._rebuild_zones()
+        self._set_status("拖动/缩放调整选项框,双击改文字,点 + 增加选项,点第一个框 ✕ 完成")
+
+    def _rebuild_zones(self):
+        for zone in self._zones or []:
+            zone.win.destroy()
+        self._zones = []
+        width, height, gap = 260, 70, 24
         vx = ctypes.windll.user32.GetSystemMetrics(76)
         vy = ctypes.windll.user32.GetSystemMetrics(77)
         vw = ctypes.windll.user32.GetSystemMetrics(78)
         vh = ctypes.windll.user32.GetSystemMetrics(79)
         x = vx + (vw - width) // 2
         y_top = vy + (vh - height * 2 - gap) // 2
-        defaults = (
-            (x, y_top, x + width, y_top + height),
-            (x, y_top + height + gap, x + width, y_top + height * 2 + gap),
-        )
-        self._zones[0].set_geometry(self.option_correct_bbox or defaults[0])
-        self._zones[1].set_geometry(self.option_wrong_bbox or defaults[1])
-        for zone in self._zones:
+        prev_bottom = None
+        for index, data in enumerate(self.option_zones):
+            bbox = data.get("bbox")
+            if bbox is None:
+                if prev_bottom is None:
+                    bbox = (x, y_top, x + width, y_top + height)
+                else:
+                    bbox = (x, prev_bottom + gap, x + width, prev_bottom + gap + height)
+            else:
+                bbox = list(bbox)
+            zone = OptionZone(self.root, data["label"], data["color"],
+                              on_change=lambda bbox2, i=index: self._set_option_bbox(i, bbox2),
+                              on_close=lambda i=index: self._close_zone(i),
+                              on_label_change=lambda text, i=index: self._set_option_label(i, text),
+                              on_geometry_changed=self._refresh_add_btn)
+            zone.set_geometry(bbox)
             zone.show()
-        self._set_status("拖动/缩放调整「正确」「错误」框,再点「选项区域」或点 ✕ 完成")
+            self._zones.append(zone)
+            prev_bottom = bbox[3]
+        if self._add_btn is None:
+            self._add_btn = AddZoneButton(self.root, on_add=self._add_option_zone)
+        self._refresh_add_btn()
+
+    def _refresh_add_btn(self):
+        if self._add_btn is None:
+            return
+        if self._zones and any(zone.is_visible() for zone in self._zones):
+            last = self._zones[-1]
+            last.win.update_idletasks()
+            self._add_btn.follow(last.bbox())
+            self._add_btn.show()
+        else:
+            self._add_btn.hide()
+
+    def _add_option_zone(self):
+        if not self._zones:
+            return
+        last = self._zones[-1]
+        x1, y1, x2, y2 = last.bbox()
+        gap = 24
+        bbox = [x1, y2 + gap, x2, y2 + gap + (y2 - y1)]
+        self.option_zones.append({"label": self._next_zone_label(), "bbox": bbox, "color": "#1565c0"})
+        self._rebuild_zones()
+        self._save_option_zones()
+
+    def _next_zone_label(self):
+        used = {(zone.get("label") or "").strip().upper() for zone in self.option_zones}
+        for letter in "ABCDEFGHIJKLMNOPQRSTUVWXYZ":
+            if letter not in used:
+                return letter
+        return "选项{}".format(len(self.option_zones) + 1)
+
+    def _close_zone(self, index):
+        if index == 0:
+            self._hide_option_zones()
+        else:
+            self._delete_option_zone(index)
+
+    def _delete_option_zone(self, index):
+        if index >= len(self.option_zones):
+            return
+        del self.option_zones[index]
+        self._rebuild_zones()
+        self._save_option_zones()
 
     def _hide_option_zones(self):
         for zone in self._zones or []:
             zone.hide(save=True)
-        self.config["option_correct"] = self.option_correct_bbox
-        self.config["option_wrong"] = self.option_wrong_bbox
-        save_config(self.config)
+        if self._add_btn:
+            self._add_btn.hide()
+        self._save_option_zones()
         self._set_status("选项区域已保存")
 
-    def _set_option_bbox(self, key, bbox):
-        if key == "correct":
-            self.option_correct_bbox = list(bbox)
-        else:
-            self.option_wrong_bbox = list(bbox)
+    def _set_option_bbox(self, index, bbox):
+        if 0 <= index < len(self.option_zones):
+            self.option_zones[index]["bbox"] = list(bbox)
+
+    def _set_option_label(self, index, text):
+        if 0 <= index < len(self.option_zones):
+            self.option_zones[index]["label"] = text
+            if self._zones and index < len(self._zones):
+                self._zones[index].set_label(text)
+        self._save_option_zones()
+
+    def _save_option_zones(self):
+        zones = [{"label": zone["label"], "bbox": zone.get("bbox"), "color": zone["color"]}
+                 for zone in self.option_zones]
+        self.config["option_zones"] = zones
+        self.config.pop("option_correct", None)
+        self.config.pop("option_wrong", None)
+        save_config(self.config)
 
     def _stop_region_monitor(self):
         self._monitor_stop.set()
@@ -793,41 +961,70 @@ class App:
             return
         self._start_ocr(image)
 
+    def _zone_keywords(self, zone):
+        label = (zone.get("label") or "").strip()
+        if "正确" in label or "对" in label:
+            return ["正确", "对", "是", "TRUE", "YES"]
+        if "错误" in label or "错" in label or "否" in label:
+            return ["错误", "错", "否", "FALSE", "NO"]
+        return None
+
+    def _zone_is_literal(self, zone):
+        label = (zone.get("label") or "").strip()
+        return len(label) == 1 and (label.isalpha() or label.isdigit())
+
+    def _zone_matches(self, zone, text, text_upper):
+        label = (zone.get("label") or "").strip()
+        if not label:
+            return False
+        keywords = self._zone_keywords(zone)
+        if keywords is not None:
+            return any(kw in text for kw in keywords)
+        if len(label) == 1 and (label.isalpha() or label.isdigit()):
+            return label.upper() in text_upper
+        return label in text
+
     def _auto_answer_match(self, answer_text):
         text = (answer_text or "").strip()
         if not text:
             return
         if not self.auto_answer_var.get():
             return
-        if self.option_correct_bbox is None or self.option_wrong_bbox is None:
+        if not self.option_zones or not any(zone.get("bbox") for zone in self.option_zones):
             self._set_status("选项区域未设置完整,未自动点击")
             return
         if self._zones:
             for zone in self._zones:
                 zone.hide(save=False)
-        correct_keywords = ["正确", "对", "是", "TRUE", "YES", "A", "1"]
-        wrong_keywords = ["错误", "错", "否", "FALSE", "NO", "B", "2"]
-        bbox = None
-        clicked_label = ""
-        for kw in correct_keywords:
-            if kw in text:
-                bbox = self.option_correct_bbox
-                clicked_label = "正确"
-                break
-        if bbox is None:
-            for kw in wrong_keywords:
-                if kw in text:
-                    bbox = self.option_wrong_bbox
-                    clicked_label = "错误"
-                    break
-        if bbox is None:
+        if self._add_btn:
+            self._add_btn.hide()
+        text_upper = text.upper()
+        letter_hits = [zone for zone in self.option_zones
+                       if zone.get("bbox") and self._zone_is_literal(zone)
+                       and self._zone_matches(zone, text, text_upper)]
+        if letter_hits:
+            hits = letter_hits
+        else:
+            hits = [zone for zone in self.option_zones
+                    if zone.get("bbox") and self._zone_matches(zone, text, text_upper)]
+        if not hits:
             self._set_status("未匹配到选项,未自动点击")
             return
+        labels = [(zone.get("label") or "").strip() for zone in hits]
+        self._auto_click_boxes(hits, 0)
+        summary = "、".join(labels)
+        self._set_status("已自动选择 {}".format(summary))
+        return summary
+
+    def _auto_click_boxes(self, hits, index):
+        if index >= len(hits):
+            return
+        bbox = hits[index]["bbox"]
         cx = (bbox[0] + bbox[2]) // 2
         cy = (bbox[1] + bbox[3]) // 2
         self._click_at(cx, cy)
-        self._set_status("已自动选择 {}".format(clicked_label))
-        return clicked_label
+        if index + 1 < len(hits):
+            self.root.after(150, lambda: self._auto_click_boxes(hits, index + 1))
 
     def _click_at(self, x, y):
         ctypes.windll.user32.SetCursorPos(int(x), int(y))
@@ -1091,13 +1288,17 @@ class App:
         self.config["auto_send"] = self.auto_var.get()
         self.config["auto_region"] = self.region_var.get()
         self.config["auto_answer"] = self.auto_answer_var.get()
-        self.config["option_correct"] = self.option_correct_bbox
-        self.config["option_wrong"] = self.option_wrong_bbox
+        self.config["option_zones"] = [{"label": zone["label"], "bbox": zone.get("bbox"), "color": zone["color"]}
+                                       for zone in self.option_zones]
+        self.config.pop("option_correct", None)
+        self.config.pop("option_wrong", None)
         self.config["geometry"] = self.root.geometry()
         self._monitor_stop.set()
         if self._zones:
             for zone in self._zones:
                 zone.hide(save=True)
+        if self._add_btn:
+            self._add_btn.hide()
         save_config(self.config)
         self.root.destroy()
 
