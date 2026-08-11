@@ -369,7 +369,7 @@ class App:
         capture_frame = ttk.Frame(toolbar)
         ttk.Button(capture_frame, text="截图识别 (F2)", takefocus=0, command=self.capture_ocr).pack()
         self.region_var = tk.BooleanVar(value=self.config.get("auto_region", False))
-        ttk.Checkbutton(capture_frame, text="区域自动识别", variable=self.region_var,
+        ttk.Checkbutton(capture_frame, text="区域自动识别", variable=self.region_var, takefocus=0,
                         command=self._on_region_var_toggle).pack(pady=(3, 0))
         capture_frame.pack(side="left")
         ttk.Button(toolbar, text="打开图片", takefocus=0, command=self.open_file_ocr).pack(side="left", padx=(6, 0))
@@ -378,7 +378,7 @@ class App:
         send_frame = ttk.Frame(toolbar)
         ttk.Button(send_frame, text="发送给 MiMo", takefocus=0, command=self.send_to_mimo).pack()
         self.auto_var = tk.BooleanVar(value=self.config.get("auto_send", True))
-        ttk.Checkbutton(send_frame, text="识别后自动发送", variable=self.auto_var).pack(pady=(3, 0))
+        ttk.Checkbutton(send_frame, text="识别后自动发送", variable=self.auto_var, takefocus=0).pack(pady=(3, 0))
         send_frame.pack(side="left", padx=(6, 0))
         ttk.Button(toolbar, text="设置", takefocus=0, command=self.open_settings).pack(side="left", padx=(6, 0))
         spacer = ttk.Frame(toolbar)
