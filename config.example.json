@@ -4,8 +4,13 @@
   "model": "mimo-v2.5",
   "temperature": 0.2,
   "max_tokens": 2048,
-  "system_prompt": "直接简洁回答用户问题,不要输出分析过程,不要输出思考过程,不要给出答案解析,优先给出答案选项或答案",
+  "system_prompt": "直接回答用户的问题,不要分析过程,不要输出思考过程,不要给出答案解析,直接给出答案",
   "auto_send": true,
+  "auto_region": false,
+  "region_stable": 0.6,
+  "auto_answer": false,
+  "option_correct": null,
+  "option_wrong": null,
   "geometry": "",
   "update_repo": ""
 }

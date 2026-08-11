@@ -25,9 +25,10 @@ Windows-only tkinter 桌面答题工具(Python 3.10+,开发环境 3.14):本地 O
 - `history_store.py`:history.json 读写,`add_record` 同题去重、上限 500
 - 流式并发安全:每个请求带 `_req_id`,`stream_start/token/done/stopped/error` 事件都按 req_id 过滤,防历史事件串台
 - 区域自动识别(`_region_monitor`):300ms 采样缩略图差值,连续满足「内容识别延迟(秒)」(`config["region_stable"]`,默认 0.6)才触发;触发条件在 `region_changed` 事件,生成中触发会置 `_pending_region_change` 在 stream_done 后补发
+- 全自动答题:用户分别框选「正确」/「错误」选项的屏幕区域(`option_correct`/`option_wrong`),MiMo 返回答案后匹配关键词(正确/对/是 → 正确区域,错误/错/否 → 错误区域),用 `ctypes.mouse_event` 模拟点击;自动答题开启时系统提示词追加「如果是判断题,只回答正确或错误」;历史记录新增 `sel` 字段
 
 ## 配置与格式
 
-- `config.json` 本地自动生成;字段:`api_key/base_url/model/temperature/max_tokens/system_prompt/auto_send/auto_region/region_stable/geometry/update_repo`;`config.example.json` 是模板,api_key 必须留空
+- `config.json` 本地自动生成;字段:`api_key/base_url/model/temperature/max_tokens/system_prompt/auto_send/auto_region/region_stable/auto_answer/option_correct/option_wrong/geometry/update_repo`;`config.example.json` 是模板,api_key 必须留空
 - 设置弹窗字段名与 config key 一一对应,新增设置项要同步改 `DEFAULT_CONFIG`、设置弹窗 rows、`_save` 校验
 - 按钮风格:设置/历史库按钮统一 `width=8`,布局用 grid + weight=1 两侧列居中,勿用 pack fill/expand(会拉伸/压扁)
