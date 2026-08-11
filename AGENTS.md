@@ -14,6 +14,7 @@ Windows-only tkinter 桌面答题工具(Python 3.10+,开发环境 3.14):本地 O
 - **只有用户明确说"推送"才 commit/push**;平时改动只本地提交
 - **每次推送前必须先去敏**:`config.json`、`history.json` 已在 .gitignore,但提交前要确认无 API Key 泄漏(扫 `sk-`/`tp-` 前缀、检查 `api_key` 只有参数引用);key 只存在于本地 config.json
 - **每次推送必须同步修改 README.md** 反映本次改动
+- **每次推送都要给用户一份发行版说明**(markdown 可直接粘贴 GitHub 新建发行版);只列「新增/优化」,**不要加「使用说明」章节**(用户明确要求)
 - 发布版本:改 `app.py` 的 `APP_VERSION` → commit → `git tag vX.Y.Z` → `git push origin main --tags`;tag 是钉死的快照,旧 Release 不随新代码更新
 
 ## 架构要点
