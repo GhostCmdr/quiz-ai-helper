@@ -19,7 +19,7 @@ Windows-only tkinter 桌面答题工具(Python 3.10+,开发环境 3.14):本地 O
 
 ## 架构要点
 
-- `app.py`:全部 UI + 逻辑(入口);后台线程与主线程通过 `queue.Queue` + `_handle_event` 分发事件(`_push("event", ...)`)
+- `app.py`:全部 UI + 逻辑(入口);后台线程与主线程通过 `queue.Queue` + `_handle_event` 分发事件(`_push("event", ...)`);**工作线程严禁读 Tk 变量/控件**(会抛 RuntimeError 卡死流),开关值必须在主线程读出后当参数传进线程
 - `mimo_client.py`:MiMo API 客户端,`stream_chat(text, stop_event)` 逐行流式;`StreamStopped` 异常 = 被中断(先 `response.close()` 停服务端)
 - `ocr_engine.py`(winocr 封装)、`screenshot.py`(RegionSelector 框选 + grab_region)
 - `history_store.py`:history.json 读写,`add_record` 同题去重、上限 500

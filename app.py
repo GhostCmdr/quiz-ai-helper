@@ -518,6 +518,7 @@ class App:
         self.ocr_thread = None
         self.stream_thread = None
         self.streaming = False
+        self._token_count = 0
         self.cur_image = None
         self.stats = None
         self._stop_event = threading.Event()
@@ -675,7 +676,7 @@ class App:
                 self._handle_event(event, args)
         except queue.Empty:
             pass
-        self.root.after(80, self._poll_queue)
+        self.root.after(30, self._poll_queue)
 
     def _handle_event(self, event, args):
         if event == "ocr_done":
@@ -698,23 +699,25 @@ class App:
         elif event == "token":
             if args[0] != self._req_id:
                 return
-            self.result_text.configure(state="normal")
             self.result_text.insert("end", args[1])
-            self.result_text.see("end")
-            self.result_text.configure(state="disabled")
+            self._token_count += 1
+            if self._token_count % 10 == 0:
+                self.result_text.see("end")
         elif event == "stream_start":
             if args[0] != self._req_id:
                 return
             self.streaming = True
+            self._token_count = 0
             self.result_text.configure(state="normal")
             self.result_text.delete("1.0", "end")
-            self.result_text.configure(state="disabled")
             self._set_status("MiMo 生成中...")
             self.speed_label.configure(text="响应速度：--")
         elif event == "stream_done":
             if args[0] != self._req_id:
                 return
             self.streaming = False
+            self.result_text.configure(state="disabled")
+            self.result_text.see("end")
             self._set_status("完成 ({} 字)".format(args[1]))
             self._show_final_speed()
             if len(args) > 2:
@@ -734,6 +737,7 @@ class App:
             if args[0] != self._req_id:
                 return
             self.streaming = False
+            self.result_text.configure(state="disabled")
             self._set_status("已停止生成")
             self._show_final_speed()
         elif event == "stream_error":
@@ -1164,15 +1168,17 @@ class App:
         self._stop_event = stop_event
         self._req_id += 1
         req_id = self._req_id
-        self.stream_thread = threading.Thread(target=self._stream_worker, args=(text, req_id, stop_event), daemon=True)
+        auto_answer = self.auto_answer_var.get()
+        self.stream_thread = threading.Thread(
+            target=self._stream_worker, args=(text, req_id, stop_event, auto_answer), daemon=True)
         self.stream_thread.start()
 
-    def _stream_worker(self, text, req_id, stop_event):
+    def _stream_worker(self, text, req_id, stop_event, auto_answer):
         import time
         self.stats = {"start": time.monotonic(), "first": None, "chars": 0, "total": None}
         self._push("stream_start", req_id)
         system_prompt = self.config["system_prompt"]
-        if self.auto_answer_var.get():
+        if auto_answer:
             system_prompt += "\n如果是判断题,只回答正确或错误,不要输出其他内容。"
         client = MiMoClient(
             api_key=self.config["api_key"],
