@@ -813,12 +813,19 @@ class App:
         selector.start()
 
     def _on_region_selected(self, bbox):
+        was_visible = self._zones_visible()
+        self._hide_zones_ui()
         try:
             image = screenshot.grab_region(*bbox)
-            self._start_ocr(image)
         except Exception as error:
+            if was_visible:
+                self._show_zones_ui()
             messagebox.showerror("截图", str(error))
             self._set_status("截图失败")
+            return
+        if was_visible:
+            self._show_zones_ui()
+        self._start_ocr(image)
         self.region_bbox = bbox
         if self.region_var.get():
             self._start_region_monitor()
@@ -899,6 +906,23 @@ class App:
         else:
             self._add_btn.hide()
 
+    def _zones_visible(self):
+        return bool(self._zones) and any(zone.is_visible() for zone in self._zones)
+
+    def _hide_zones_ui(self):
+        if self._zones:
+            for zone in self._zones:
+                zone.hide(save=False)
+        if self._add_btn:
+            self._add_btn.hide()
+
+    def _show_zones_ui(self):
+        if self._zones:
+            for zone in self._zones:
+                zone.show()
+        if self._add_btn:
+            self._refresh_add_btn()
+
     def _add_option_zone(self):
         if not self._zones:
             return
@@ -963,11 +987,17 @@ class App:
             self._monitor_thread = None
 
     def _region_changed_proc(self):
+        was_visible = self._zones_visible()
+        self._hide_zones_ui()
         try:
             image = screenshot.grab_region(*self.region_bbox)
         except Exception as error:
+            if was_visible:
+                self._show_zones_ui()
             self._set_status("区域截图失败")
             return
+        if was_visible:
+            self._show_zones_ui()
         self._start_ocr(image)
 
     def _zone_keywords(self, zone):
@@ -1002,11 +1032,8 @@ class App:
         if not self.option_zones or not any(zone.get("bbox") for zone in self.option_zones):
             self._set_status("选项区域未设置完整,未自动点击")
             return
-        if self._zones:
-            for zone in self._zones:
-                zone.hide(save=False)
-        if self._add_btn:
-            self._add_btn.hide()
+        was_visible = self._zones_visible()
+        self._hide_zones_ui()
         text_upper = text.upper()
         letter_hits = [zone for zone in self.option_zones
                        if zone.get("bbox") and self._zone_is_literal(zone)
@@ -1020,20 +1047,24 @@ class App:
             self._set_status("未匹配到选项,未自动点击")
             return
         labels = [(zone.get("label") or "").strip() for zone in hits]
-        self._auto_click_boxes(hits, 0)
+        self._auto_click_boxes(hits, 0, restore=was_visible)
         summary = "、".join(labels)
         self._set_status("已自动选择 {}".format(summary))
         return summary
 
-    def _auto_click_boxes(self, hits, index):
+    def _auto_click_boxes(self, hits, index, restore=False):
         if index >= len(hits):
+            if restore:
+                self._show_zones_ui()
             return
         bbox = hits[index]["bbox"]
         cx = (bbox[0] + bbox[2]) // 2
         cy = (bbox[1] + bbox[3]) // 2
         self._click_at(cx, cy)
         if index + 1 < len(hits):
-            self.root.after(150, lambda: self._auto_click_boxes(hits, index + 1))
+            self.root.after(150, lambda: self._auto_click_boxes(hits, index + 1, restore))
+        elif restore:
+            self.root.after(150, self._show_zones_ui)
 
     def _click_at(self, x, y):
         ctypes.windll.user32.SetCursorPos(int(x), int(y))
@@ -1120,9 +1151,6 @@ class App:
     def send_to_mimo(self):
         if self.streaming:
             return
-        if self._zones:
-            for zone in self._zones:
-                zone.hide(save=False)
         text = self.ocr_text.get("1.0", "end-1c").strip()
         if not text:
             messagebox.showinfo("提示", "请先识别或输入文本")
