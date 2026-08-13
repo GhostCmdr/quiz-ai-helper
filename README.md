@@ -1,6 +1,6 @@
 # 快速问答助手 (quiz-ai-helper)
 
-> 当前版本 v0.2.0
+> 当前版本 v0.3.0
 
 轻量级 Windows 桌面答题工具:**本地 OCR 实时识别屏幕内容 → 自动发送给小米 MiMo 大模型 → 流式显示答案**。识别快、回答快、零额外依赖。
 
@@ -9,7 +9,7 @@
 - 🖱️ **截图识别 (F2)**:拖拽框选屏幕任意区域,双击确认 / Esc 或右键取消
 - 📁 **打开图片 / 识别剪贴板**:支持 PNG / JPG / BMP / WEBP / TIFF
 - ⚡ **本地 OCR**:调用 Windows 原生 OCR(winocr),中文优先,识别即回显,零上传延迟
-- 🤖 **流式回答**:MiMo 大模型逐字流式返回,实时显示响应速度
+- 🤖 **流式回答**:MiMo 大模型逐字流式返回,实时显示响应速度;渲染链路优化(30 倍)+ 队列轮询 30ms,长答案显示更流畅
 - 🧠 **全系模型**:mimo-v2.5 / mimo-v2.5-pro / mimo-v2.5-pro-ultraspeed 下拉切换
 - 🧹 **一键清空**:清空文本框,同时中断 MiMo 服务端生成(断连即停,不浪费 Token)
 - 📚 **历史库**:自动记录查询过的题目与答案(同题去重、上限 500 条),点击条目一键回填查看
@@ -67,7 +67,10 @@ python app.py
   "auto_send": true,
   "auto_region": false,
   "region_stable": 0.6,
-  "update_repo": "GhostCmdr/quiz-ai-helper"
+  "auto_answer": false,
+  "option_zones": [],
+  "update_repo": "GhostCmdr/quiz-ai-helper",
+  "update_silent": ""
 }
 ```
 
