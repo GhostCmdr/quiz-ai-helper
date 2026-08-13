@@ -460,18 +460,23 @@ class OptionZone:
 class AddZoneButton:
     """圆形加号按钮,跟随最后一个选项框下方。"""
 
+    SIZE = 30
+
     def __init__(self, root, on_add=None):
         self.on_add = on_add
         self.win = tk.Toplevel(root)
         self.win.overrideredirect(True)
         self.win.attributes("-topmost", True)
-        self.win.attributes("-alpha", 0.9)
-        self.canvas = tk.Canvas(self.win, width=26, height=26, bg="#2e7d32",
+        self.win.attributes("-alpha", 0.95)
+        size = self.SIZE
+        self.canvas = tk.Canvas(self.win, width=size, height=size, bg="#2e7d32",
                                 highlightthickness=0, cursor="hand2")
         self.canvas.pack()
-        self.canvas.create_oval(1, 1, 25, 25, fill="#2e7d32", outline="white", width=2)
-        self.canvas.create_line(13, 6, 13, 20, fill="white", width=2)
-        self.canvas.create_line(6, 13, 20, 13, fill="white", width=2)
+        self.canvas.create_oval(1, 1, size - 1, size - 1, fill="#2e7d32", outline="white", width=2)
+        c = size // 2
+        t, b = c - 6, c + 6
+        self.canvas.create_line(c, t, c, b, fill="white", width=3)
+        self.canvas.create_line(t, c, b, c, fill="white", width=3)
         self.canvas.bind("<Button-1>", lambda e: self._click())
         self.win.withdraw()
 
@@ -482,10 +487,14 @@ class AddZoneButton:
     def follow(self, bbox):
         x1, y1, x2, y2 = bbox
         cx = (x1 + x2) // 2
-        self.win.geometry("+{}+{}".format(cx - 13, int(y2) + 10))
+        self.win.geometry("+{}+{}".format(cx - self.SIZE // 2, int(y2) + 8))
 
     def show(self):
+        self.win.update_idletasks()
         self.win.deiconify()
+        self.win.attributes("-topmost", True)
+        self.win.lift()
+        self.win.update_idletasks()
         self.win.lift()
 
     def hide(self):
