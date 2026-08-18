@@ -27,7 +27,7 @@ jobs:
           pip install pyinstaller
 
       - name: 打包成 exe
-        run: pyinstaller --onefile --name quiz-ai-helper app.py
+        run: pyinstaller --onefile --name quiz-ai-helper --exclude-module unittest --exclude-module pydoc_data --exclude-module lib2to3 --exclude-module email --exclude-module sqlite3 --exclude-module tkinter.test --exclude-module turtledemo app.py
 
       - name: 上传到 Release
         uses: softprops/action-gh-release@v2
