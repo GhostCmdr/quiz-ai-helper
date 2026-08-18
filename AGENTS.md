@@ -25,8 +25,8 @@ Windows-only tkinter 桌面答题工具(Python 3.10+,开发环境 3.14):本地 O
 - `history_store.py`:history.json 读写,`add_record` 同题去重、上限 500
 - 流式并发安全:每个请求带 `_req_id`,`stream_start/token/done/stopped/error` 事件都按 req_id 过滤,防历史事件串台
 - 区域自动识别(`_region_monitor`):300ms 采样缩略图差值,连续满足「内容识别延迟(秒)」(`config["region_stable"]`,默认 0.6)才触发;触发条件在 `region_changed` 事件,生成中触发会置 `_pending_region_change` 在 stream_done 后补发
-- 全自动答题:选项区域用 `option_zones` 列表存 `{label, bbox, color}`,默认「正确」(绿)/「错误」(红)两框,绿色圆形 ➕ 按钮(AddZoneButton)跟随最后一个框,点击追加新框(蓝,默认字母 A/B/C…);双击框弹出编辑弹窗改 label;首个框 ✕ 完成隐藏,非首框 ✕ 删除该框;旧 config 的 option_correct/option_wrong 在 load_config 自动迁移
-- 全自动答题匹配(`_auto_answer_match`):标签含「正确/对」→ 关键词 正确/对/是/TRUE/YES;含「错误/错/否」→ 错误/错/否/FALSE/NO;单个字母/数字标签(如 A、1)→ 答案文本中出现即命中(忽略大小写,支持 A、C / AC / A和C);命中多个框时 `root.after(150ms)` 依次点击各框中心,点击前隐藏全部框;历史记录新增 `sel` 字段存命中的标签(多个用「、」连接)
+- 自动答题:选项区域用 `option_zones` 列表存 `{label, bbox, color}`,默认「正确」(绿)/「错误」(红)两框,绿色圆形 ➕ 按钮(AddZoneButton)跟随最后一个框(拖动/缩放实时跟随,`_refresh_add_btn(_bbox=None)` 兼容回调传参),点击追加新框(蓝,默认字母 A/B/C…);双击框弹出编辑弹窗改 label;首个框 ✕ 完成隐藏,非首框 ✕ 删除该框;旧 config 的 option_correct/option_wrong 在 load_config 自动迁移
+- 自动答题匹配(`_auto_answer_match`):标签含「正确/对」→ 关键词 正确/对/是/TRUE/YES;含「错误/错/否」→ 错误/错/否/FALSE/NO;单个字母/数字标签(如 A、1)→ 答案文本中出现即命中(忽略大小写,支持 A、C / AC / A和C);命中多个框时 `root.after(150ms)` 依次点击各框中心,点击前隐藏全部框;历史记录新增 `sel` 字段存命中的标签(多个用「、」连接)
 
 ## 配置与格式
 
