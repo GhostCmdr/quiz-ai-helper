@@ -20,7 +20,7 @@ CONFIG_PATH = os.path.join(APP_DIR, "config.json")
 INVITE_IMAGE_PATH = os.path.join(APP_DIR, "invite_poster.png")
 HISTORY_PATH = os.path.join(APP_DIR, "history.json")
 
-APP_VERSION = "0.3.0"
+APP_VERSION = "0.3.5"
 
 DEFAULT_CONFIG = {
     "api_key": "",
