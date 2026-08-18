@@ -157,6 +157,10 @@ class SettingsDialog(tk.Toplevel):
         self._tip_img = None
         self.invite_btn.bind("<Enter>", self._invite_tip_enter)
         self.invite_btn.bind("<Leave>", self._invite_tip_leave)
+        self._destroyed = False
+        self._test_stop = threading.Event()
+        self._poll_after = None
+        self.bind("<Destroy>", self._on_destroy)
         spacer = ttk.Frame(test_row)
         spacer.pack(side="left", fill="x", expand=True)
         ttk.Button(test_row, text="保存", takefocus=0, width=8, command=self._save).pack(side="left", padx=4)
@@ -183,19 +187,27 @@ class SettingsDialog(tk.Toplevel):
             system_prompt=self.prompt_text.get("1.0", "end-1c"),
         )
         self._test_result = None
-        threading.Thread(target=self._test_worker, args=(client,), daemon=True).start()
-        self.after(150, self._poll_test)
+        threading.Thread(target=self._test_worker, args=(client, self._test_stop), daemon=True).start()
+        self._poll_after = self.after(150, self._poll_test)
 
-    def _test_worker(self, client):
+    def _on_destroy(self, event):
+        if event.widget is not self:
+            return
+        self._destroyed = True
+        self._test_stop.set()
+
+    def _test_worker(self, client, stop_event):
         try:
-            content, elapsed = client.test_connection()
+            content, elapsed = client.test_connection(stop_event)
             self._test_result = (True, content, elapsed)
         except Exception as error:
             self._test_result = (False, str(error), None)
 
     def _poll_test(self):
+        if self._destroyed:
+            return
         if self._test_result is None:
-            self.after(150, self._poll_test)
+            self._poll_after = self.after(150, self._poll_test)
             return
         ok, content, elapsed = self._test_result
         clean = content.strip()

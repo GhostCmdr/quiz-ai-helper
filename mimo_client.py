@@ -79,7 +79,7 @@ class MiMoClient:
                 if content:
                     yield content
 
-    def test_connection(self):
+    def test_connection(self, stop_event=None):
         url = self.base_url + "/chat/completions"
         payload = {
             "model": self.model,
@@ -103,6 +103,9 @@ class MiMoClient:
         try:
             with urllib.request.urlopen(request, timeout=60) as response:
                 for raw_line in response:
+                    if stop_event is not None and stop_event.is_set():
+                        response.close()
+                        raise StreamStopped()
                     line = raw_line.decode("utf-8", "replace").strip()
                     if not line.startswith("data:"):
                         continue
