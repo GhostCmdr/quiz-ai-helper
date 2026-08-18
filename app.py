@@ -1356,6 +1356,7 @@ class App:
         self._set_status("设置已保存")
 
     def _on_close(self):
+        self._stop_event.set()
         self.config["auto_send"] = self.auto_var.get()
         self.config["auto_region"] = self.region_var.get()
         self.config["auto_answer"] = self.auto_answer_var.get()
