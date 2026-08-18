@@ -588,7 +588,7 @@ class App:
         answer_frame = ttk.Frame(toolbar)
         ttk.Button(answer_frame, text="选项区域", takefocus=0, command=self._on_option_region).pack()
         self.auto_answer_var = tk.BooleanVar(value=self.config.get("auto_answer", False))
-        ttk.Checkbutton(answer_frame, text="全自动答题", variable=self.auto_answer_var, takefocus=0,
+        ttk.Checkbutton(answer_frame, text="自动答题", variable=self.auto_answer_var, takefocus=0,
                         command=self._on_auto_answer_toggle).pack(pady=(3, 0))
         answer_frame.pack(side="left", padx=(6, 0))
         ttk.Button(toolbar, text="设置", takefocus=0, command=self.open_settings).pack(side="left", padx=(6, 0))
@@ -911,7 +911,7 @@ class App:
             self._add_btn = AddZoneButton(self.root, on_add=self._add_option_zone)
         self._refresh_add_btn()
 
-    def _refresh_add_btn(self):
+    def _refresh_add_btn(self, _bbox=None):
         if self._add_btn is None:
             return
         if self._zones and any(zone.is_visible() for zone in self._zones):
