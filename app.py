@@ -1248,7 +1248,7 @@ class App:
             if len(answer) > 60:
                 answer = answer[:60] + "…"
             self.history_list.insert("end", "{}. {}".format(index + 1, question))
-            self.history_list.insert("end", "    {}".format(answer))
+            self.history_list.insert("end", "    {}\n{}".format(answer, "─" * 36))
 
     def _history_select(self, event):
         if self.streaming:
