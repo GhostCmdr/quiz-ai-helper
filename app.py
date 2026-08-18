@@ -641,7 +641,7 @@ class App:
         self.history_scroll = ttk.Scrollbar(self.history_frame, command=self.history_text.yview)
         self.history_text.configure(yscrollcommand=self.history_scroll.set)
         self.history_text.tag_configure("sep", foreground="#aaaaaa")
-        self.history_text.tag_configure("sel", background="#cfe3ff")
+        self.history_text.tag_configure("rec_sel", background="#cfe3ff")
         self.history_text.bind("<ButtonRelease-1>", self._history_click)
         self._history_sel = None
         self.history_scroll.pack(side="right", fill="y", padx=(0, 8), pady=8)
@@ -1259,7 +1259,7 @@ class App:
             self.history_text.insert("end", "\n")
         self.history_text.configure(state="disabled")
         self._history_sel = None
-        self.history_text.tag_remove("sel", "1.0", "end")
+        self.history_text.tag_remove("rec_sel", "1.0", "end")
 
     def _history_click(self, event):
         if self.streaming:
@@ -1279,8 +1279,8 @@ class App:
         self.speed_label.configure(text="")
         self.stats = None
         self._history_sel = record_index
-        self.history_text.tag_remove("sel", "1.0", "end")
-        self.history_text.tag_add("sel", "{}.0".format(record_index * 4 + 1),
+        self.history_text.tag_remove("rec_sel", "1.0", "end")
+        self.history_text.tag_add("rec_sel", "{}.0".format(record_index * 4 + 1),
                                   "{}.0".format(record_index * 4 + 5))
         self._set_status("已载入历史")
 
