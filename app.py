@@ -1281,7 +1281,7 @@ class App:
         self._history_sel = record_index
         self.history_text.tag_remove("rec_sel", "1.0", "end")
         self.history_text.tag_add("rec_sel", "{}.0".format(record_index * 4 + 1),
-                                  "{}.0".format(record_index * 4 + 5))
+                                  "{}.0".format(record_index * 4 + 4))
         self._set_status("已载入历史")
 
     def _history_delete(self):
