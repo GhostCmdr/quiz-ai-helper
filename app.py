@@ -616,8 +616,7 @@ class App:
         self.speed_label = tk.Label(result_head, text="", fg="#888888", font=(UI_FONT, 9))
         self.speed_label.pack(side="left", padx=(8, 0))
         result_frame = ttk.LabelFrame(self.paned, labelwidget=result_head)
-        self.result_text = tk.Text(result_frame, wrap="word", font=(UI_FONT, 10),
-                                   state="disabled", cursor="arrow")
+        self.result_text = tk.Text(result_frame, wrap="word", font=(UI_FONT, 10), undo=True)
         self.result_scroll = ttk.Scrollbar(result_frame, command=self.result_text.yview)
         self.result_text.configure(yscrollcommand=self.result_scroll.set)
         self.result_text.pack(side="left", fill="both", expand=True)
@@ -726,7 +725,6 @@ class App:
                 return
             self.streaming = True
             self._token_count = 0
-            self.result_text.configure(state="normal")
             self.result_text.delete("1.0", "end")
             self._set_status("MiMo 生成中...")
             self.speed_label.configure(text="响应速度：--")
@@ -734,7 +732,6 @@ class App:
             if args[0] != self._req_id:
                 return
             self.streaming = False
-            self.result_text.configure(state="disabled")
             self.result_text.see("end")
             self._set_status("完成 ({} 字)".format(args[1]))
             self._show_final_speed()
@@ -755,7 +752,6 @@ class App:
             if args[0] != self._req_id:
                 return
             self.streaming = False
-            self.result_text.configure(state="disabled")
             self._set_status("已停止生成")
             self._show_final_speed()
         elif event == "stream_error":
@@ -763,9 +759,7 @@ class App:
                 return
             self.streaming = False
             self._set_status("调用失败")
-            self.result_text.configure(state="normal")
             self.result_text.insert("end", "\n\n[错误] " + args[1] + "\n")
-            self.result_text.configure(state="disabled")
         elif event == "update_result":
             self._updating = False
             found, tag, url, manual = args
@@ -1240,19 +1234,21 @@ class App:
         self._pending_region_change = False
         self.streaming = False
         self.ocr_text.delete("1.0", "end")
-        self.result_text.configure(state="normal")
         self.result_text.delete("1.0", "end")
-        self.result_text.configure(state="disabled")
         self.speed_label.configure(text="")
         self.stats = None
 
     def _refresh_history_list(self):
         self.history_list.delete(0, "end")
-        for record in self.history_records:
+        for index, record in enumerate(self.history_records):
             question = (record.get("q") or "").replace("\n", " ")
+            answer = (record.get("a") or "").replace("\n", " ").strip() or "(无答案)"
             if len(question) > 40:
                 question = question[:40] + "…"
-            self.history_list.insert("end", question)
+            if len(answer) > 60:
+                answer = answer[:60] + "…"
+            self.history_list.insert("end", "{}. {}".format(index + 1, question))
+            self.history_list.insert("end", "    {}".format(answer))
 
     def _history_select(self, event):
         if self.streaming:
@@ -1260,13 +1256,11 @@ class App:
         selection = self.history_list.curselection()
         if not selection:
             return
-        record = self.history_records[selection[0]]
+        record = self.history_records[selection[0] // 2]
         self.ocr_text.delete("1.0", "end")
         self.ocr_text.insert("1.0", record.get("q", ""))
-        self.result_text.configure(state="normal")
         self.result_text.delete("1.0", "end")
         self.result_text.insert("1.0", record.get("a", ""))
-        self.result_text.configure(state="disabled")
         self.speed_label.configure(text="")
         self.stats = None
         self._set_status("已载入历史")
@@ -1275,7 +1269,7 @@ class App:
         selection = self.history_list.curselection()
         if not selection:
             return
-        del self.history_records[selection[0]]
+        del self.history_records[selection[0] // 2]
         history_store.save_history(HISTORY_PATH, self.history_records)
         self._refresh_history_list()
         self._set_status("已删除历史条目")
