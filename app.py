@@ -1247,9 +1247,8 @@ class App:
                 question = question[:40] + "…"
             if len(answer) > 60:
                 answer = answer[:60] + "…"
-            self.history_list.insert("end", "{}. {}".format(index + 1, question))
-            self.history_list.insert("end", "    {}".format(answer))
-            self.history_list.insert("end", "─" * 36)
+            self.history_list.insert("end", "{}. {}\n    {}\n{}".format(
+                index + 1, question, answer, "—" * 20))
 
     def _history_select(self, event):
         if self.streaming:
@@ -1257,7 +1256,7 @@ class App:
         selection = self.history_list.curselection()
         if not selection:
             return
-        record = self.history_records[selection[0] // 3]
+        record = self.history_records[selection[0]]
         self.ocr_text.delete("1.0", "end")
         self.ocr_text.insert("1.0", record.get("q", ""))
         self.result_text.delete("1.0", "end")
@@ -1270,7 +1269,7 @@ class App:
         selection = self.history_list.curselection()
         if not selection:
             return
-        del self.history_records[selection[0] // 3]
+        del self.history_records[selection[0]]
         history_store.save_history(HISTORY_PATH, self.history_records)
         self._refresh_history_list()
         self._set_status("已删除历史条目")
