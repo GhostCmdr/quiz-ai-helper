@@ -634,13 +634,18 @@ class App:
         ttk.Button(history_btns, text="清空历史", takefocus=0, width=8,
                    command=self._history_clear).grid(row=0, column=2, padx=(8, 0))
         history_btns.pack(side="bottom", fill="x", padx=8, pady=(0, 8))
-        self.history_list = tk.Listbox(self.history_frame, font=(UI_FONT, 10),
-                                       exportselection=False, activestyle="none")
-        self.history_scroll = ttk.Scrollbar(self.history_frame, command=self.history_list.yview)
-        self.history_list.configure(yscrollcommand=self.history_scroll.set)
+        self.history_text = tk.Text(self.history_frame, font=(UI_FONT, 10), wrap="none",
+                                     state="disabled", cursor="hand2", relief="flat",
+                                     highlightthickness=1, highlightbackground="#bbbbbb",
+                                     takefocus=0)
+        self.history_scroll = ttk.Scrollbar(self.history_frame, command=self.history_text.yview)
+        self.history_text.configure(yscrollcommand=self.history_scroll.set)
+        self.history_text.tag_configure("sep", foreground="#aaaaaa")
+        self.history_text.tag_configure("sel", background="#cfe3ff")
+        self.history_text.bind("<ButtonRelease-1>", self._history_click)
+        self._history_sel = None
         self.history_scroll.pack(side="right", fill="y", padx=(0, 8), pady=8)
-        self.history_list.pack(side="left", fill="both", expand=True, padx=(8, 0), pady=(8, 0))
-        self.history_list.bind("<ButtonRelease-1>", self._history_select)
+        self.history_text.pack(side="left", fill="both", expand=True, padx=(8, 0), pady=(8, 0))
 
         self.paned_h.add(left_area, minsize=280)
         self.paned_h.add(self.history_frame, minsize=220)
@@ -1239,7 +1244,8 @@ class App:
         self.stats = None
 
     def _refresh_history_list(self):
-        self.history_list.delete(0, "end")
+        self.history_text.configure(state="normal")
+        self.history_text.delete("1.0", "end")
         for index, record in enumerate(self.history_records):
             question = (record.get("q") or "").replace("\n", " ")
             answer = (record.get("a") or "").replace("\n", " ").strip() or "(无答案)"
@@ -1247,29 +1253,45 @@ class App:
                 question = question[:40] + "…"
             if len(answer) > 60:
                 answer = answer[:60] + "…"
-            self.history_list.insert("end", "{}. {}\n    {}\n{}".format(
-                index + 1, question, answer, "—" * 20))
+            self.history_text.insert("end", "{}. {}\n".format(index + 1, question))
+            self.history_text.insert("end", "    {}\n".format(answer))
+            self.history_text.insert("end", "{} \n".format("—" * 20), "sep")
+            self.history_text.insert("end", "\n")
+        self.history_text.configure(state="disabled")
+        self._history_sel = None
+        self.history_text.tag_remove("sel", "1.0", "end")
 
-    def _history_select(self, event):
+    def _history_click(self, event):
         if self.streaming:
             return
-        selection = self.history_list.curselection()
-        if not selection:
+        try:
+            line = int(self.history_text.index("@%d,%d" % (event.x, event.y)).split(".")[0])
+        except tk.TclError:
             return
-        record = self.history_records[selection[0]]
+        record_index = (line - 1) // 4
+        if record_index < 0 or record_index >= len(self.history_records):
+            return
+        record = self.history_records[record_index]
         self.ocr_text.delete("1.0", "end")
         self.ocr_text.insert("1.0", record.get("q", ""))
         self.result_text.delete("1.0", "end")
         self.result_text.insert("1.0", record.get("a", ""))
         self.speed_label.configure(text="")
         self.stats = None
+        self._history_sel = record_index
+        self.history_text.tag_remove("sel", "1.0", "end")
+        self.history_text.tag_add("sel", "{}.0".format(record_index * 4 + 1),
+                                  "{}.0".format(record_index * 4 + 5))
         self._set_status("已载入历史")
 
     def _history_delete(self):
-        selection = self.history_list.curselection()
-        if not selection:
+        if self._history_sel is None:
+            self._set_status("请先点击选择要删除的记录")
             return
-        del self.history_records[selection[0]]
+        del self.history_records[self._history_sel]
+        history_store.save_history(HISTORY_PATH, self.history_records)
+        self._refresh_history_list()
+        self._set_status("已删除历史条目")
         history_store.save_history(HISTORY_PATH, self.history_records)
         self._refresh_history_list()
         self._set_status("已删除历史条目")
