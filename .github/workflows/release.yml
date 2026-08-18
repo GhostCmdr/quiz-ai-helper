@@ -1,6 +1,6 @@
 name: Release
 
-run-name: 自动打包exe,并挂到release
+run-name: 自动打包exe,并挂到${{ github.event.release.name }}
 
 on:
   release:

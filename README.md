@@ -24,23 +24,10 @@
 
 ## 快速开始
 
-### 环境要求
+直接下载最新版:https://github.com/GhostCmdr/quiz-ai-helper/releases/latest
+双击 quiz-ai-helper.exe 即可使用(Windows 10+,无需安装 Python)
 
-- Windows 10 及以上版本
-- Python 3.10+（开发环境为 3.14）
-- Windows 自带 OCR 组件（Win10 默认已包含）
-
-### 安装
-
-```bash
-pip install -r requirements.txt
-```
-
-### 运行
-
-```bash
-python app.py
-```
+源码运行:pip install -r requirements.txt && python app.py
 
 ### 首次使用
 
