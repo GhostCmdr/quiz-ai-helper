@@ -535,6 +535,8 @@ class App:
         self.stats = None
         self._stop_event = threading.Event()
         self._req_id = 0
+        self._ocr_seq = 0
+        self._updating = False
         self.region_bbox = None
         self._monitor_thread = None
         self._monitor_stop = threading.Event()
@@ -692,10 +694,12 @@ class App:
 
     def _handle_event(self, event, args):
         if event == "ocr_done":
+            if args[0] != self._ocr_seq:
+                return
             self._set_status("OCR 完成")
             self.ocr_text.delete("1.0", "end")
-            self.ocr_text.insert("1.0", args[0])
-            if self.auto_var.get() and args[0].strip():
+            self.ocr_text.insert("1.0", args[1])
+            if self.auto_var.get() and args[1].strip():
                 self.send_to_mimo()
         elif event == "region_changed":
             if not self.region_var.get():
@@ -706,8 +710,10 @@ class App:
             else:
                 self._region_changed_proc()
         elif event == "ocr_error":
+            if args[0] != self._ocr_seq:
+                return
             self._set_status("OCR 失败")
-            messagebox.showerror("OCR 识别", args[0])
+            messagebox.showerror("OCR 识别", args[1])
         elif event == "token":
             if args[0] != self._req_id:
                 return
@@ -761,6 +767,7 @@ class App:
             self.result_text.insert("end", "\n\n[错误] " + args[1] + "\n")
             self.result_text.configure(state="disabled")
         elif event == "update_result":
+            self._updating = False
             found, tag, url, manual = args
             if not found:
                 if manual:
@@ -776,6 +783,8 @@ class App:
                 messagebox.showinfo("检查更新", "当前已是最新版本 ({})".format(APP_VERSION))
 
     def check_update(self, manual=False):
+        if self._updating:
+            return
         repo = (self.config.get("update_repo") or "").strip()
         if not repo:
             if manual:
@@ -783,6 +792,7 @@ class App:
             return
         if manual:
             self._set_status("正在检查更新...")
+        self._updating = True
         threading.Thread(target=self._update_worker, args=(repo, manual), daemon=True).start()
 
     def _update_worker(self, repo, manual):
@@ -1061,6 +1071,8 @@ class App:
                     if zone.get("bbox") and self._zone_matches(zone, text, text_upper)]
         if not hits:
             self._set_status("未匹配到选项,未自动点击")
+            if was_visible:
+                self._show_zones_ui()
             return
         labels = [(zone.get("label") or "").strip() for zone in hits]
         self._auto_click_boxes(hits, 0, restore=was_visible)
@@ -1154,15 +1166,17 @@ class App:
     def _start_ocr(self, image):
         self.cur_image = image
         self._set_status("OCR 识别中...")
-        self.ocr_thread = threading.Thread(target=self._ocr_worker, args=(image,), daemon=True)
+        self._ocr_seq += 1
+        seq = self._ocr_seq
+        self.ocr_thread = threading.Thread(target=self._ocr_worker, args=(image, seq), daemon=True)
         self.ocr_thread.start()
 
-    def _ocr_worker(self, image):
+    def _ocr_worker(self, image, seq):
         try:
             text = ocr_engine.ocr_image(image)
-            self._push("ocr_done", text)
+            self._push("ocr_done", seq, text)
         except Exception as error:
-            self._push("ocr_error", str(error))
+            self._push("ocr_error", seq, str(error))
 
     def send_to_mimo(self):
         if self.streaming:
@@ -1222,6 +1236,8 @@ class App:
 
     def clear_all(self):
         self._stop_event.set()
+        self._req_id += 1
+        self._pending_region_change = False
         self.streaming = False
         self.ocr_text.delete("1.0", "end")
         self.result_text.configure(state="normal")
