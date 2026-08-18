@@ -640,9 +640,9 @@ class App:
                                      takefocus=0)
         self.history_scroll = ttk.Scrollbar(self.history_frame, command=self.history_text.yview)
         self.history_text.configure(yscrollcommand=self.history_scroll.set)
-        self.history_text.tag_configure("sep", foreground="#aaaaaa")
         self.history_text.tag_configure("rec_sel", background="#cfe3ff")
         self.history_text.bind("<ButtonRelease-1>", self._history_click)
+        self.root.bind_all("<ButtonRelease-1>", self._on_global_click)
         self._history_sel = None
         self.history_scroll.pack(side="right", fill="y", padx=(0, 8), pady=8)
         self.history_text.pack(side="left", fill="both", expand=True, padx=(8, 0), pady=(8, 0))
@@ -1255,11 +1255,18 @@ class App:
                 answer = answer[:60] + "…"
             self.history_text.insert("end", "{}. {}\n".format(index + 1, question))
             self.history_text.insert("end", "    {}\n".format(answer))
-            self.history_text.insert("end", "{} \n".format("—" * 20), "sep")
             self.history_text.insert("end", "\n")
         self.history_text.configure(state="disabled")
-        self._history_sel = None
+        self._clear_history_sel()
+
+    def _clear_history_sel(self):
         self.history_text.tag_remove("rec_sel", "1.0", "end")
+        self._history_sel = None
+
+    def _on_global_click(self, event):
+        if event.widget is self.history_text:
+            return
+        self._clear_history_sel()
 
     def _history_click(self, event):
         if self.streaming:
@@ -1268,7 +1275,7 @@ class App:
             line = int(self.history_text.index("@%d,%d" % (event.x, event.y)).split(".")[0])
         except tk.TclError:
             return
-        record_index = (line - 1) // 4
+        record_index = (line - 1) // 3
         if record_index < 0 or record_index >= len(self.history_records):
             return
         record = self.history_records[record_index]
@@ -1280,8 +1287,8 @@ class App:
         self.stats = None
         self._history_sel = record_index
         self.history_text.tag_remove("rec_sel", "1.0", "end")
-        self.history_text.tag_add("rec_sel", "{}.0".format(record_index * 4 + 1),
-                                  "{}.0".format(record_index * 4 + 4))
+        self.history_text.tag_add("rec_sel", "{}.0".format(record_index * 3 + 1),
+                                  "{}.0".format(record_index * 3 + 3))
         self._set_status("已载入历史")
 
     def _history_delete(self):
